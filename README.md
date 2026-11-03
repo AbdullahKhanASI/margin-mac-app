@@ -123,3 +123,9 @@ transparency and writes `Resources/AppIcon.icns`; rerun it after changing the ar
 
 Because it uses private APIs and needs Accessibility access, Margin can't be sandboxed or sold on the Mac App Store.
 It can be distributed directly as a Developer ID–signed, notarized app.
+
+## License
+
+Copyright (C) 2026 Abdullah Khan
+
+Margin is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE) for the full text.
