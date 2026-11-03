@@ -2,6 +2,7 @@
 # Builds Margin.app into ./build.
 #   ./build.sh           build and sign
 #   ./build.sh install   also copy to /Applications and launch it
+#   ./build.sh release   also zip it as build/Margin-v<version>.zip for a GitHub release
 #
 # Signing uses $MARGIN_SIGN_IDENTITY, else the first "Apple Development" identity, else ad-hoc.
 # A stable identity matters: macOS ties the Accessibility grant to the signature, so ad-hoc
@@ -34,4 +35,12 @@ if [[ "${1:-}" == "install" ]]; then
     cp -R "$APP" /Applications/
     open /Applications/Margin.app
     echo "Installed and launched /Applications/Margin.app"
+fi
+
+if [[ "${1:-}" == "release" ]]; then
+    VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
+    ZIP="build/Margin-v${VERSION}${MARGIN_VERSION_SUFFIX:-}.zip"
+    rm -f "$ZIP"
+    ditto -c -k --keepParent "$APP" "$ZIP"
+    echo "Zipped $ZIP"
 fi

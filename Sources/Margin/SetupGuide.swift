@@ -42,6 +42,18 @@ private struct SetupGuideView: View {
     private var volumeSide: String { prefs.config.swapSides ? "left" : "right" }
     private var brightnessSide: String { prefs.config.swapSides ? "right" : "left" }
 
+    /// Steps 1–3 are always shown; mute and the media strip are optional.
+    private var loginStepNumber: Int {
+        4 + (prefs.config.quickMute ? 1 : 0) + (prefs.config.mediaStrip ? 1 : 0)
+    }
+
+    private var accessibilityDetail: String {
+        if state.accessibilityLikelyStale && !state.accessibilityTrusted {
+            return "Already switched on but still not working? That's an old entry. Reset it, then switch Margin on again."
+        }
+        return "Lets Margin hold the pointer still and change levels."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
@@ -55,11 +67,15 @@ private struct SetupGuideView: View {
                 Step(
                     number: 1,
                     title: "Allow Accessibility access",
-                    detail: "Lets Margin hold the pointer still and change levels.",
+                    detail: accessibilityDetail,
                     done: state.accessibilityTrusted
                 ) {
                     if !state.accessibilityTrusted {
-                        Button("Open Settings") { state.requestAccessibility() }.controlSize(.small)
+                        if state.accessibilityLikelyStale {
+                            Button("Reset") { state.resetAccessibility() }.controlSize(.small)
+                        } else {
+                            Button("Open Settings") { state.requestAccessibility() }.controlSize(.small)
+                        }
                     }
                 }
                 Step(number: 2, title: "Slide along the \(volumeSide) edge",
@@ -71,8 +87,14 @@ private struct SetupGuideView: View {
                          detail: "Mutes and unmutes. You'll feel a stronger buzz.", done: completed.contains("mute")) {}
                 }
                 if prefs.config.mediaStrip {
-                    Step(number: prefs.config.quickMute ? 5 : 4, title: "Swipe along the bottom edge",
+                    Step(number: loginStepNumber - 1, title: "Swipe along the bottom edge",
                          detail: "Right to skip ahead, left to go back.", done: completed.contains("skip")) {}
+                }
+                Step(number: loginStepNumber, title: "Open Margin at login",
+                     detail: "So your edges keep working after a restart.", done: state.launchAtLogin) {
+                    if !state.launchAtLogin {
+                        Button("Turn On") { state.launchAtLogin = true }.controlSize(.small)
+                    }
                 }
             }
 

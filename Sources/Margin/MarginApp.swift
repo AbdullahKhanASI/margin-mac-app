@@ -7,12 +7,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var startedDevices = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Runs before anything else so permissions are only ever requested for the installed copy.
+        if AppMover.moveIfNeeded() { return }
+
         mr_allow_background_cursor_control()
         MenuPanel.shared.install()
         TouchEngine.shared.update(Preferences.shared.config)
         startDevices()
 
         let state = AppState.shared
+        state.updateAccessibilityHealth()
         // The setup guide asks for access itself on first launch; later launches prompt directly.
         if CommandLine.arguments.contains("--setup-guide") {
             SetupGuide.shared.show()
@@ -85,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let state = AppState.shared
         let trusted = AXIsProcessTrusted()
         if trusted != state.accessibilityTrusted { state.accessibilityTrusted = trusted }
+        state.updateAccessibilityHealth()
         if trusted { InputGate.shared.install() }
 
         let config = Preferences.shared.config

@@ -68,7 +68,14 @@ struct MenuView: View {
                 .labelsHidden()
         }
 
-        if !state.accessibilityTrusted {
+        if !state.accessibilityTrusted && state.accessibilityLikelyStale {
+            Notice(
+                symbol: "lock.trianglebadge.exclamationmark",
+                text: "Margin may already be switched on in Accessibility settings, but macOS isn't honouring it "
+                    + "(this happens after an update). Reset the permission, then switch Margin on again.",
+                action: "Reset Permission"
+            ) { state.resetAccessibility() }
+        } else if !state.accessibilityTrusted {
             Notice(
                 symbol: "lock.shield",
                 text: "Margin needs Accessibility access to change volume and brightness and to hold the pointer still.",

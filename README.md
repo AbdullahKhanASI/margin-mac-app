@@ -1,6 +1,6 @@
 # Margin
 
-> **Beta (v1.1.0-beta).** Margin works day to day, but expect rough edges. Please report problems in
+> **Beta (v1.2.0-beta).** Margin works day to day, but expect rough edges. Please report problems in
 > [Issues](https://github.com/AbdullahKhanASI/margin-mac-app/issues).
 
 A menu bar app that turns the edges of a Mac trackpad into controls.
@@ -22,21 +22,36 @@ A menu bar app that turns the edges of a Mac trackpad into controls.
 
 ## Installation
 
-### Option A: download the beta
+### Option A: one-line install (recommended)
 
-1. Download `Margin-v1.1.0-beta.zip` from the
-   [Releases page](https://github.com/AbdullahKhanASI/margin-mac-app/releases).
-2. Unzip it and drag **Margin.app** into `/Applications`.
-3. The beta isn't notarized yet, so macOS will block the first launch. Either right-click Margin.app → **Open** →
-   **Open**, or clear the quarantine flag in Terminal:
+Open **Terminal** and paste:
 
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/Margin.app
-   ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/AbdullahKhanASI/margin-mac-app/main/install.sh | bash
+```
 
-4. Launch Margin. It lives in the menu bar (there's no Dock icon).
+This downloads the newest release (betas included), installs it into `/Applications` (or `~/Applications` if you
+aren't an admin), and opens it. Run the same command again to update. You can read the script first:
+[`install.sh`](install.sh).
 
-### Option B: build from source
+- Install a particular release: `curl -fsSL …/install.sh | bash -s -- --version v1.2.0-beta`
+- If the repository is private and you've been invited to it, install the [GitHub CLI](https://cli.github.com)
+  (`brew install gh`) and run `gh auth login` first. The script then downloads through it.
+
+### Option B: download the zip
+
+1. Download the `.zip` from the newest release on the
+   [Releases page](https://github.com/AbdullahKhanASI/margin-mac-app/releases), unzip it, and open **Margin.app**.
+2. The beta isn't notarized yet, so macOS blocks the first launch with a warning that it can't check the app.
+   Click **Done** (not Move to Trash), then:
+   - **macOS 15 (Sequoia) or later:** open **System Settings → Privacy & Security**, scroll to the
+     "Margin was blocked" message and click **Open Anyway**, then confirm with your password.
+   - **macOS 14 (Sonoma):** right-click Margin.app, choose **Open**, then **Open** again.
+3. If Margin isn't in Applications yet, it offers to move itself there. Click **Move to Applications**.
+
+If you're comfortable in Terminal, `xattr -dr com.apple.quarantine /path/to/Margin.app` skips step 2.
+
+### Option C: build from source
 
 ```bash
 git clone https://github.com/AbdullahKhanASI/margin-mac-app.git
@@ -54,27 +69,38 @@ To use a specific identity:
 MARGIN_SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" ./build.sh install
 ```
 
-### First launch: grant Accessibility access
+### First launch: the setup guide
 
 Margin needs Accessibility access to change volume and brightness and to hold the pointer still while you slide.
+On first launch a setup guide walks you through it:
 
-1. On first launch the setup guide opens. Click **Open Settings**.
-2. In **System Settings → Privacy & Security → Accessibility**, turn on **Margin**.
-3. Go back to the setup guide and try each gesture; each one ticks off as it's recognised.
+1. **Allow Accessibility access.** Click **Open Settings**, then turn on **Margin** in
+   **System Settings → Privacy & Security → Accessibility**. The step ticks off by itself once access comes through.
+2. **Try each gesture.** Slide the volume and brightness edges, double-tap the mute corner, and swipe the bottom
+   edge. Each one ticks off as Margin recognises it.
+3. **Open at login.** Click **Turn On** so Margin starts with your Mac.
 
-If gestures stop working after you rebuild or update, remove Margin from the Accessibility list (the **–** button),
-then add it again.
+Reopen the guide any time from Settings → Setup Guide….
+
+**Margin is switched on in Accessibility but still doesn't work?** That's an old entry left behind by a previous
+version. Margin spots this and shows a **Reset** button in the setup guide and the menu: click it, then switch
+Margin on again when macOS asks. The install script does this for you when it updates Margin.
 
 ### Uninstall
 
-Quit Margin from its menu, delete `/Applications/Margin.app`, and remove it from
-**System Settings → Privacy & Security → Accessibility**. To also clear its settings:
-
 ```bash
-defaults delete com.abdullahkhan.Margin
+curl -fsSL https://raw.githubusercontent.com/AbdullahKhanASI/margin-mac-app/main/install.sh | bash -s -- --uninstall
 ```
 
+This quits Margin, deletes the app, and removes its Accessibility permission and settings. To do it by hand: quit
+Margin, delete `Margin.app`, remove it from **System Settings → Privacy & Security → Accessibility**, and run
+`defaults delete com.abdullahkhan.Margin`.
+
 ## Development
+
+To cut a release, run `MARGIN_VERSION_SUFFIX=.0-beta ./build.sh release` (the version comes from
+`Resources/Info.plist`) and attach the resulting `build/Margin-v….zip` to a GitHub release. `install.sh` picks up the
+newest release automatically.
 
 `Margin --preview-menu` opens the menu's contents in a regular window, and `Margin --preview-overlay` sweeps the overlay
 up and down without changing the real levels. Both are handy when working on the UI.
