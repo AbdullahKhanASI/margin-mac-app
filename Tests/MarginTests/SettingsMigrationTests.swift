@@ -58,3 +58,32 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertEqual(try decode(json), layout)
     }
 }
+
+final class UnreadableLayoutTests: XCTestCase {
+    private func decode(_ json: String) throws -> Layout {
+        try JSONDecoder().decode(LayoutProbe.self, from: Data(json.utf8)).layout
+    }
+
+    /// A newer build may save a command this one doesn't know. The layout falls back to
+    /// migration (the default, since the old booleans are gone) instead of throwing, which would
+    /// reset every other setting along with it.
+    func testUnknownCommandFallsBackToDefault() throws {
+        let json = """
+        {"enabled":true,"layout":{"edges":{"rightEdge":{"slide":{"level":{"_0":"outputVolume"}},
+         "swipeIn":{"none":{}},"tap":{"none":{}}}},"corners":{"topLeft":{"summonUnicorn":{}}}}}
+        """
+        XCTAssertEqual(try decode(json), .default)
+    }
+
+    func testUnknownLevelSourceFallsBack() throws {
+        let json = #"{"layout":{"edges":{"leftEdge":{"slide":{"level":{"_0":"keyboardBacklight"}},"swipeIn":{"none":{}},"tap":{"none":{}}}},"corners":{}}}"#
+        XCTAssertEqual(try decode(json), .default)
+    }
+
+    /// The old booleans still apply if they happen to be there next to a broken layout.
+    func testBrokenLayoutUsesOldBooleansIfPresent() throws {
+        let json = #"{"quickMute":false,"layout":"not a layout"}"#
+        XCTAssertEqual(try decode(json), Layout.migrated(swapSides: false, quickMute: false, mediaStrip: true,
+                                                         mediaPlayPause: true, reverseMediaSwipe: false))
+    }
+}

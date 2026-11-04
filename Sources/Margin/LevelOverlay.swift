@@ -3,11 +3,11 @@ import Observation
 import SwiftUI
 
 enum LevelKind {
-    case volume, brightness
+    case volume, brightness, inputVolume
 }
 
-/// A small pill in the middle of the screen showing the level being slid.
-/// It follows the finger continuously and fades out shortly after the slide ends.
+/// A small pill in the middle of the screen showing the level being slid, or a stepper's running
+/// count. It follows the finger continuously and fades out shortly after the slide ends.
 final class LevelOverlay {
     static let shared = LevelOverlay()
 
@@ -19,12 +19,22 @@ final class LevelOverlay {
     private static let lingerSeconds = 1.1
 
     func show(_ kind: LevelKind, level: Double, muted: Bool) {
-        let panel = panel ?? makePanel()
-        self.panel = panel
-
+        model.counter = nil
         model.kind = kind
         model.level = level
         model.muted = muted
+        present()
+    }
+
+    /// A stepper's symbol and running count, such as "Undo ×3".
+    func showCounter(symbol: String, label: String) {
+        model.counter = OverlayModel.Counter(symbol: symbol, label: label)
+        present()
+    }
+
+    private func present() {
+        let panel = panel ?? makePanel()
+        self.panel = panel
 
         if !model.visible {
             position(panel)
@@ -71,12 +81,20 @@ private final class OverlayModel {
     var level = 0.0
     var muted = false
     var visible = false
+    /// Set while showing a stepper; nil shows the level.
+    var counter: Counter?
+
+    struct Counter: Equatable {
+        var symbol: String
+        var label: String
+    }
 }
 
 private struct OverlayView: View {
     let model: OverlayModel
 
     private var symbol: String {
+        if let counter = model.counter { return counter.symbol }
         switch model.kind {
         case .brightness:
             return model.level < 0.5 ? "sun.min.fill" : "sun.max.fill"
@@ -85,10 +103,31 @@ private struct OverlayView: View {
             if model.level < 0.34 { return "speaker.wave.1.fill" }
             if model.level < 0.67 { return "speaker.wave.2.fill" }
             return "speaker.wave.3.fill"
+        case .inputVolume:
+            return model.muted || model.level == 0 ? "mic.slash.fill" : "mic.fill"
         }
     }
 
     private var shownLevel: Double { model.muted ? 0 : model.level }
+
+    @ViewBuilder private var levelBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.15))
+                Capsule().fill(.primary)
+                    .frame(width: max(geo.size.height, geo.size.width * shownLevel))
+                    .opacity(shownLevel > 0 ? 1 : 0)
+            }
+        }
+        .frame(height: 6)
+
+        Text("\(Int((shownLevel * 100).rounded()))")
+            .font(.system(size: 13, weight: .medium).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(width: 30, alignment: .trailing)
+            .contentTransition(.identity)
+            .transaction { $0.animation = nil }
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -97,22 +136,15 @@ private struct OverlayView: View {
                 .frame(width: 26)
                 .contentTransition(.symbolEffect(.replace))
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.primary.opacity(0.15))
-                    Capsule().fill(.primary)
-                        .frame(width: max(geo.size.height, geo.size.width * shownLevel))
-                        .opacity(shownLevel > 0 ? 1 : 0)
-                }
+            if let counter = model.counter {
+                Text(counter.label)
+                    .font(.system(size: 15, weight: .medium).monospacedDigit())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentTransition(.identity)
+                    .transaction { $0.animation = nil }
+            } else {
+                levelBar
             }
-            .frame(height: 6)
-
-            Text("\(Int((shownLevel * 100).rounded()))")
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 30, alignment: .trailing)
-                .contentTransition(.identity)
-                .transaction { $0.animation = nil }
         }
         .padding(.horizontal, 20)
         .frame(width: 280, height: 48)

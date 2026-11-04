@@ -86,7 +86,8 @@ struct EngineConfig: Codable, Equatable {
         hapticFeel = try c.decodeIfPresent(HapticFeel.self, forKey: .hapticFeel) ?? d.hapticFeel
         // Settings saved by v1.2 have no layout; it's rebuilt from their old booleans.
         layout = try SettingsMigration.decodeLayout(from: decoder)
-        profiles = try c.decodeIfPresent([AppProfile].self, forKey: .profiles) ?? d.profiles
+        // Like the layout, unreadable profiles are dropped rather than resetting everything.
+        profiles = (try? c.decodeIfPresent([AppProfile].self, forKey: .profiles)) ?? d.profiles
         bottomQuarterOnly = try c.decodeIfPresent(Bool.self, forKey: .bottomQuarterOnly) ?? d.bottomQuarterOnly
         requireModifier = try c.decodeIfPresent(Bool.self, forKey: .requireModifier) ?? d.requireModifier
         freezeCursor = try c.decodeIfPresent(Bool.self, forKey: .freezeCursor) ?? d.freezeCursor
