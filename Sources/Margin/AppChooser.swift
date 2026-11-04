@@ -53,11 +53,17 @@ enum AppChooser {
 /// Keeps the open panel inside the Applications folders. Finder shows the system's own apps
 /// (Calculator, Notes) in /Applications, but they live in /System/Applications.
 ///
-/// An item counts if either its own path or the one it links to is inside: Safari's entry in
-/// /Applications is a symlink into the system's Cryptex volume, so checking only the resolved
-/// path greyed it out.
+/// An item counts if either its own path or the one it links to is inside. Safari's entry in
+/// /Applications is a symlink into the Cryptex volume, and the open panel hands us the resolved
+/// URL (under /System/Volumes/Preboot/Cryptexes), so the Cryptex app folders are roots too, as is
+/// the Data volume that /Applications is firmlinked to.
 private final class ApplicationsOnly: NSObject, NSOpenSavePanelDelegate {
-    private static let roots = ["/Applications", "/System/Applications"]
+    private static let roots = [
+        "/Applications", "/System/Applications",
+        "/System/Volumes/Data/Applications",
+        "/System/Cryptexes/App/System/Applications",
+        "/System/Volumes/Preboot/Cryptexes/App/System/Applications",
+    ]
 
     func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
         [url.standardizedFileURL.path, url.resolvingSymlinksInPath().path].contains { path in
