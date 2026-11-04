@@ -75,6 +75,8 @@ struct EngineConfig: Codable, Equatable {
     var sensitivity = 1.0
     /// Fraction of the trackpad width that counts as an edge.
     var edgeWidth = 0.08
+    /// Settings → Timer. The engine only needs the alarm, and gets that from `setAlarm`.
+    var timer = TimerSettings()
 
     init() {}
 
@@ -99,6 +101,7 @@ struct EngineConfig: Codable, Equatable {
         magicMouse = try c.decodeIfPresent(Bool.self, forKey: .magicMouse) ?? d.magicMouse
         sensitivity = try c.decodeIfPresent(Double.self, forKey: .sensitivity) ?? d.sensitivity
         edgeWidth = try c.decodeIfPresent(Double.self, forKey: .edgeWidth) ?? d.edgeWidth
+        timer = (try? c.decodeIfPresent(TimerSettings.self, forKey: .timer)) ?? d.timer
     }
 }
 

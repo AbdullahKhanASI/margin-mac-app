@@ -21,6 +21,7 @@ enum MenuPage: Equatable {
 struct MenuView: View {
     @Bindable private var prefs = Preferences.shared
     private let state = AppState.shared
+    private let timer = TimerService.shared
     @State private var page: MenuPage
 
     init(page: MenuPage = .main) {
@@ -111,6 +112,8 @@ struct MenuView: View {
         TrackpadDiagram(layout: prefs.config.layout, levels: LiveLevels(state)) { page = .zone($0) }
             .opacity(prefs.config.enabled ? 1 : 0.45)
 
+        if timer.state != .idle { TimerRow(timer: timer) }
+
         VStack(spacing: 8) {
             SwitchRow("Haptic Feedback", isOn: $prefs.config.haptics)
             if prefs.config.haptics {
@@ -166,6 +169,8 @@ private struct SettingsPage: View {
         }
 
         AppProfilesSection(prefs: prefs, open: openProfile)
+
+        TimerSettingsSection(prefs: prefs, timer: TimerService.shared)
 
         PanelSection("While Sliding") {
             SwitchRow("Freeze Cursor", detail: "The pointer stays hidden and still", isOn: $prefs.config.freezeCursor)

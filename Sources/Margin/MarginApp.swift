@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuPanel.shared.install()
         Preferences.shared.pushToEngine()
         startDevices()
+        // After the devices, so a timer that rang while Margin was quit knows the built-in trackpad.
+        TimerService.shared.start()
 
         let state = AppState.shared
         state.updateAccessibilityHealth()
@@ -41,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Development aid: show the menu's content in an ordinary window.
         if CommandLine.arguments.contains("--preview-menu") { showPreviewWindow() }
         if CommandLine.arguments.contains("--preview-overlay") { previewOverlay() }
+        // Development aid: a 10-second timer, to try the alarm.
+        if CommandLine.arguments.contains("--preview-timer") { TimerService.shared.startPreview() }
         if CommandLine.arguments.contains("--open-panel") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { MenuPanel.shared.open() }
             if CommandLine.arguments.contains("--settings") {

@@ -162,6 +162,21 @@ int mr_device_count(int include_external, int include_mouse) {
     return count;
 }
 
+uint64_t mr_builtin_device_id(void) {
+    if (!runningDevices || !pMTDeviceGetDeviceID) return 0;
+    uint64_t fallback = 0;
+    CFIndex total = CFArrayGetCount(runningDevices);
+    for (CFIndex i = 0; i < total; i++) {
+        MTDeviceRef dev = (MTDeviceRef)CFArrayGetValueAtIndex(runningDevices, i);
+        if (device_is_mouse(dev)) continue;
+        uint64_t id = 0;
+        if (pMTDeviceGetDeviceID(dev, &id) != 0) continue;
+        if (pMTDeviceIsBuiltIn && pMTDeviceIsBuiltIn(dev)) return id;
+        if (!fallback) fallback = id;
+    }
+    return fallback;
+}
+
 // MARK: - Haptics
 
 #define MR_MAX_ACTUATORS 8

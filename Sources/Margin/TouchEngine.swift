@@ -44,7 +44,7 @@ final class TouchEngine {
 
     private enum Phase {
         case pending   // landed in a zone, waiting to see what the finger does
-        case sliding   // following the finger with a `level` or `stepper` slide
+        case sliding   // following the finger with a `level`, `stepper` or `timer` slide
         case swiping   // a `flick`, which fires once
         case rejected  // ordinary pointer movement; leave it alone
     }
@@ -71,6 +71,7 @@ final class TouchEngine {
         var lastDetent = 0
         var detentsFine = false   // whether lastDetent was counted on the precise (denser) scale
         var stepper: DetentCounter?  // a stepper's notches; it stores no level
+        var dial: TimerDial?         // the timer dial's notches and value
         var maxTravel = 0.0
         var swipeFired = false
         var lostAt: Double?
@@ -108,6 +109,30 @@ final class TouchEngine {
     private var taps = DoubleTapTracker(window: Tuning.doubleTapWindow)
     private var lastHaptic = 0.0
     private var dropoutToken = 0
+    /// A copy of the timer, so the dial can start at the time left.
+    private var timer = TimerMachine()
+    private var alarm: Alarm?
+    private var alarmToken = 0
+    private var alarmTap: AlarmTap?
+
+    /// The ringing alarm, as `TimerService` set it.
+    private struct Alarm {
+        var pattern: AlarmPattern
+        var device: UInt64
+        var fingerDown = false
+        var lastBurst: Double?
+    }
+
+    /// A touch while the alarm rings, watched to see whether it's a tap, which dismisses it.
+    private struct AlarmTap {
+        var device: UInt64
+        var start: Double
+        var origin: CGPoint
+        var maxTravel = 0.0
+        var multiFinger = false
+    }
+
+    private static let alarmPoll = 0.1
 
     /// Both values are copies, so nothing on this queue reads shared state. A gesture already
     /// running keeps the bindings it resolved in `begin`, so a switch never cuts it off.
@@ -116,6 +141,26 @@ final class TouchEngine {
             self.config = newConfig
             self.trackpadLayout = trackpadLayout
             if !newConfig.enabled { self.cancel() }
+        }
+    }
+
+    /// A copy of the timer's state, for where the dial starts.
+    func updateTimer(_ machine: TimerMachine) {
+        queue.async { self.timer = machine }
+    }
+
+    /// Starts or stops the alarm. While active, the pattern repeats as long as a finger rests on
+    /// `device`, and a tap on any trackpad dismisses it. The pattern is a copy, like the config.
+    func setAlarm(active: Bool, pattern: AlarmPattern, device: UInt64) {
+        queue.async {
+            self.alarmToken += 1
+            self.alarmTap = nil
+            guard active else {
+                self.alarm = nil
+                return
+            }
+            self.alarm = Alarm(pattern: pattern, device: device)
+            self.pollAlarm(self.alarmToken)
         }
     }
 
@@ -134,6 +179,22 @@ final class TouchEngine {
     // MARK: Frame processing
 
     private func process(_ fingers: [Finger], _ ts: Double, _ uptime: Double, _ device: UInt64, _ isMouse: Bool) {
+        // The alarm comes first, and even with Margin switched off, since the timer still rings.
+        if alarm != nil, !isMouse {
+            if alarmDismissed(by: fingers, ts, device) { return }
+            defer {
+                // Set after the gesture code, which may have cleared it, so the tap-to-click
+                // that comes with a dismissing tap is swallowed.
+                if alarmTap?.start == ts { InputGate.shared.setTapCandidate(true) }
+            }
+            processGesture(fingers, ts, uptime, device, isMouse)
+            return
+        }
+        processGesture(fingers, ts, uptime, device, isMouse)
+    }
+
+    private func processGesture(_ fingers: [Finger], _ ts: Double, _ uptime: Double, _ device: UInt64,
+                                _ isMouse: Bool) {
         guard config.enabled else { return }
         // One gesture at a time; ignore a second trackpad while the first is in use.
         if let g = gesture, g.device != device { return }
@@ -174,6 +235,7 @@ final class TouchEngine {
                     let shift = g.along(p) - g.along(g.last)
                     g.stepOrigin += shift
                     g.stepper?.shift(by: shift)
+                    g.dial?.shift(by: shift)
                     g.start.x += p.x - g.last.x
                     g.last = p
                     g.fingerID = f.id
@@ -234,7 +296,7 @@ final class TouchEngine {
         )
     }
 
-    /// Anything in the layout this build can't run yet (the timer, window and timer commands) is
+    /// Anything in the layout this build can't run yet (window commands, until phase 6) is
     /// treated as unbound, so it never claims a touch or swallows a click.
     private static func runnable(_ slide: SlideAction) -> SlideAction {
         Actions.canRun(slide) ? slide : .none
@@ -280,6 +342,15 @@ final class TouchEngine {
                                                     notches: config.hapticFeel.notches)
                 g.stepper = DetentCounter(origin: g.along(p), spacing: spacing)
                 engage(g)
+            } else if g.slide == .timer, abs(along) > Tuning.slideStart, abs(along) > ratio * abs(across) {
+                g.phase = .sliding
+                // A full sweep has as many notches as the scale, so it feels like the volume edge.
+                let spacing = DetentCounter.spacing(fullRange: Tuning.fullRange, sensitivity: config.sensitivity,
+                                                    notches: Double(TimerScale.notches))
+                g.dial = TimerDial(startMinutes: timer.dialStartMinutes(now: Date()), origin: g.along(p),
+                                   spacing: spacing)
+                engage(g)
+                showDial(g.dial, lifted: false)
             } else if case .flick = g.slide, abs(along) > Tuning.swipeStart, abs(along) > ratio * abs(across) {
                 g.phase = .swiping
                 engage(g)
@@ -290,6 +361,8 @@ final class TouchEngine {
         case .sliding:
             if case .stepper(let stepper) = g.slide {
                 stepNotches(&g, stepper, to: p)
+            } else if g.slide == .timer {
+                turnDial(&g, to: p)
             } else {
                 step(&g, to: p)
             }
@@ -430,6 +503,41 @@ final class TouchEngine {
         DispatchQueue.main.async { LevelOverlay.shared.showCounter(symbol: symbol, label: label) }
     }
 
+    /// One tick per notch, and the value in the overlay.
+    private func turnDial(_ g: inout Gesture, to p: CGPoint) {
+        guard var dial = g.dial else { return }
+        let changed = dial.move(to: g.along(p))
+        g.dial = dial
+        guard changed else { return }
+        haptic(g.device)
+        showDial(dial, lifted: false)
+    }
+
+    /// Lifting starts, changes or cancels the timer. A dial lifted where it started changes
+    /// nothing while a timer exists, so resting a finger on it to look is harmless.
+    private func liftDial(_ g: Gesture) {
+        guard let dial = g.dial else { return }
+        let timerExists = timer.remaining(now: Date()) != nil
+        guard dial.moved || (!timerExists && dial.minutes > 0) else { return }
+        haptic(g.device, force: true)
+        showDial(dial, lifted: true)
+        let minutes = dial.minutes
+        let device = g.device
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .marginTimerSet, object: nil,
+                                            userInfo: ["minutes": minutes, "device": device])
+        }
+    }
+
+    private func showDial(_ dial: TimerDial?, lifted: Bool) {
+        guard let dial else { return }
+        let minutes = dial.minutes
+        DispatchQueue.main.async {
+            LevelOverlay.shared.showCounter(symbol: "timer", label: TimerDial.label(minutes: minutes),
+                                            detail: lifted ? nil : TimerDial.hint(minutes: minutes))
+        }
+    }
+
     private func engage(_ g: Gesture) {
         InputGate.shared.setTapCandidate(false)
         if g.isMouse {
@@ -444,6 +552,7 @@ final class TouchEngine {
         if g.isEngaged {
             InputGate.shared.unfreeze()
             InputGate.shared.setScrollSuppressed(false)
+            if g.phase == .sliding, g.slide == .timer, !cancelled { liftDial(g) }
             if g.phase == .sliding, let edge = g.edge { announce(edge, .slide) }
         }
         guard !cancelled, g.phase == .pending,
@@ -461,7 +570,7 @@ final class TouchEngine {
 
     /// Runs a tap or flick command, with its haptic, and reports the gesture.
     private func perform(_ command: Command, device: UInt64, zone: Zone, kind: GestureKind) {
-        Actions.fire(command)
+        Actions.fire(command, device: device)
         switch command {
         case .toggleOutputMute, .toggleInputMute:
             // A heavier buzz, so mute can be felt without looking.
@@ -488,6 +597,70 @@ final class TouchEngine {
             self.finish(g, at: g.lostAt ?? 0, uptime: ProcessInfo.processInfo.systemUptime, cancelled: false)
             self.gesture = nil
         }
+    }
+
+    // MARK: Alarm
+
+    /// Watches a touch while the alarm rings. Returns true when it was a single tap, which
+    /// dismisses the alarm and is swallowed: it never reaches the gesture code, so it can't
+    /// also count towards a double-tap.
+    private func alarmDismissed(by fingers: [Finger], _ ts: Double, _ device: UInt64) -> Bool {
+        if device == alarm?.device { alarm?.fingerDown = !fingers.isEmpty }
+        switch fingers.count {
+        case 0:
+            guard let tap = alarmTap, tap.device == device else { return false }
+            alarmTap = nil
+            guard !tap.multiFinger, ts - tap.start < Tuning.tapDuration, tap.maxTravel < Tuning.tapTravel
+            else { return false }
+            if let g = gesture, g.isEngaged { finish(g, at: ts, uptime: 0, cancelled: true) }
+            gesture = nil
+            // The click after the lift still has to be swallowed, so the candidate stays set
+            // until that's had time to arrive.
+            InputGate.shared.setTapCandidate(true)
+            queue.asyncAfter(deadline: .now() + 0.4) {
+                if self.gesture == nil { InputGate.shared.setTapCandidate(false) }
+            }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .marginAlarmDismissed, object: nil)
+            }
+            return true
+        case 1:
+            let p = CGPoint(x: fingers[0].x, y: fingers[0].y)
+            guard var tap = alarmTap, tap.device == device else {
+                alarmTap = AlarmTap(device: device, start: ts, origin: p)
+                return false
+            }
+            tap.maxTravel = max(tap.maxTravel, hypot(p.x - tap.origin.x, p.y - tap.origin.y))
+            // Pointing, not a tap: let its clicks through.
+            if tap.maxTravel > Tuning.tapTravel, alarmTap?.maxTravel ?? 0 <= Tuning.tapTravel, gesture == nil {
+                InputGate.shared.setTapCandidate(false)
+            }
+            alarmTap = tap
+            return false
+        default:
+            alarmTap?.multiFinger = true
+            return false
+        }
+    }
+
+    /// Plays a burst of the pattern whenever one is due and a finger is on the alarm's trackpad,
+    /// since the motor can't be felt otherwise. Polls rather than waiting a full interval, so a
+    /// finger that lands is buzzed straight away.
+    private func pollAlarm(_ token: Int) {
+        guard token == alarmToken, var alarm else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if alarm.fingerDown, alarm.pattern.burstDue(lastBurst: alarm.lastBurst, now: now) {
+            alarm.lastBurst = now
+            self.alarm = alarm
+            let strength: HapticStrength = alarm.pattern.strong ? .strong : .medium
+            for offset in alarm.pattern.pulseOffsets {
+                queue.asyncAfter(deadline: .now() + offset) {
+                    guard token == self.alarmToken else { return }
+                    SystemControls.tick(strength, device: alarm.device)
+                }
+            }
+        }
+        queue.asyncAfter(deadline: .now() + Self.alarmPoll) { self.pollAlarm(token) }
     }
 
     // MARK: Output
