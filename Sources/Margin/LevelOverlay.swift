@@ -6,8 +6,10 @@ enum LevelKind {
     case volume, brightness, inputVolume
 }
 
-/// A small pill in the middle of the screen showing the level being slid, or a stepper's running
-/// count. It follows the finger continuously and fades out shortly after the slide ends.
+/// A small pill in the middle of the screen showing the level being slid, a stepper's running
+/// count or the timer dial. It follows the finger continuously and fades out shortly after the
+/// slide ends. The timer's alarm is the exception: it stays until dismissed, and is the only
+/// content that takes clicks.
 final class LevelOverlay {
     static let shared = LevelOverlay()
 
@@ -20,21 +22,40 @@ final class LevelOverlay {
 
     func show(_ kind: LevelKind, level: Double, muted: Bool) {
         model.counter = nil
+        model.showingAlarm = false
         model.kind = kind
         model.level = level
         model.muted = muted
         present()
     }
 
-    /// A stepper's symbol and running count, such as "Undo ×3".
-    func showCounter(symbol: String, label: String) {
-        model.counter = OverlayModel.Counter(symbol: symbol, label: label)
+    /// A stepper's symbol and running count, such as "Undo ×3", or the dial's "25 min" with
+    /// a hint under it.
+    func showCounter(symbol: String, label: String, detail: String? = nil) {
+        model.counter = OverlayModel.Counter(symbol: symbol, label: label, detail: detail)
+        model.showingAlarm = false
         present()
     }
+
+    /// "Time's up", until `hideAlarm`. A slide meanwhile shows its level and then returns here.
+    func showAlarm() {
+        alarmActive = true
+        model.showingAlarm = true
+        present()
+    }
+
+    func hideAlarm() {
+        guard alarmActive else { return }
+        alarmActive = false
+        if model.showingAlarm { hide() }
+    }
+
+    private var alarmActive = false
 
     private func present() {
         let panel = panel ?? makePanel()
         self.panel = panel
+        panel.ignoresMouseEvents = !model.showingAlarm
 
         if !model.visible {
             position(panel)
@@ -43,9 +64,22 @@ final class LevelOverlay {
         }
 
         hideWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.model.visible = false }
+        hideWork = nil
+        guard !model.showingAlarm else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if self.alarmActive { self.showAlarm() } else { self.hide() }
+        }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.lingerSeconds, execute: work)
+    }
+
+    private func hide() {
+        hideWork?.cancel()
+        hideWork = nil
+        model.visible = false
+        model.showingAlarm = false
+        panel?.ignoresMouseEvents = true
     }
 
     private func makePanel() -> NSPanel {
@@ -61,7 +95,7 @@ final class LevelOverlay {
         panel.ignoresMouseEvents = true
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.overlayWindow)))
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.contentView = NSHostingView(rootView: OverlayView(model: model))
+        panel.contentView = ClickThroughHostingView(rootView: OverlayView(model: model))
         return panel
     }
 
@@ -75,6 +109,11 @@ final class LevelOverlay {
     }
 }
 
+/// Takes the first click, so the alarm dismisses on one click without Margin being frontmost.
+private final class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 @Observable
 private final class OverlayModel {
     var kind = LevelKind.volume
@@ -83,10 +122,13 @@ private final class OverlayModel {
     var visible = false
     /// Set while showing a stepper; nil shows the level.
     var counter: Counter?
+    /// Showing "Time's up", which takes priority over the level and the counter.
+    var showingAlarm = false
 
     struct Counter: Equatable {
         var symbol: String
         var label: String
+        var detail: String?
     }
 }
 
@@ -94,6 +136,7 @@ private struct OverlayView: View {
     let model: OverlayModel
 
     private var symbol: String {
+        if model.showingAlarm { return "alarm.fill" }
         if let counter = model.counter { return counter.symbol }
         switch model.kind {
         case .brightness:
@@ -136,12 +179,21 @@ private struct OverlayView: View {
                 .frame(width: 26)
                 .contentTransition(.symbolEffect(.replace))
 
-            if let counter = model.counter {
-                Text(counter.label)
-                    .font(.system(size: 15, weight: .medium).monospacedDigit())
+            if model.showingAlarm {
+                Text("Time's up · tap to dismiss")
+                    .font(.system(size: 15, weight: .medium))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentTransition(.identity)
-                    .transaction { $0.animation = nil }
+            } else if let counter = model.counter {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(counter.label)
+                        .font(.system(size: 15, weight: .medium).monospacedDigit())
+                    Spacer(minLength: 8)
+                    if let detail = counter.detail {
+                        Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                }
+                .contentTransition(.identity)
+                .transaction { $0.animation = nil }
             } else {
                 levelBar
             }
@@ -151,6 +203,10 @@ private struct OverlayView: View {
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.primary.opacity(0.08)))
         .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+        .contentShape(Capsule())
+        .onTapGesture {
+            if model.showingAlarm { TimerService.shared.dismiss() }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // A light spring smooths the per-frame updates without lagging behind the finger.
         .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.9), value: model.level)

@@ -30,6 +30,10 @@ void mr_stop(void);
 /// Number of devices currently connected, using the same filter as mr_start.
 int mr_device_count(int include_external, int include_mouse);
 
+/// The device ID of the built-in trackpad among those mr_start started, else the first started
+/// trackpad, else 0. The timer alarm uses it when it doesn't know which trackpad set the timer.
+uint64_t mr_builtin_device_id(void);
+
 /// Fires the haptic motor of the multitouch device with this ID (as passed to the frame callback).
 /// Works for background apps, unlike NSHapticFeedbackManager. actuation_id: 3 weak, 4 medium, 6 strong.
 /// Returns 0 on success.

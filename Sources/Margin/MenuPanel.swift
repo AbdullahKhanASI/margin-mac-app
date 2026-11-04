@@ -32,6 +32,44 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         statusItem = item
     }
 
+    private var pulse: Timer?
+
+    /// The timer's countdown beside the icon, or the icon alone for nil. The item is only as wide
+    /// as it needs to be while there's text, and square otherwise, as before the timer.
+    func setTimer(text: String?, pulsing: Bool) {
+        guard let item = statusItem, let button = item.button else { return }
+        item.length = text == nil ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        let title = text.map { " " + $0 } ?? ""
+        if button.title != title {
+            // Monospaced digits, so the item doesn't jiggle as the seconds change.
+            button.attributedTitle = NSAttributedString(string: title, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+            ])
+        }
+        button.imagePosition = text == nil ? .imageOnly : .imageLeading
+        setPulsing(pulsing)
+    }
+
+    /// The ringing alarm fades the icon in and out.
+    private func setPulsing(_ on: Bool) {
+        guard on != (pulse != nil) else { return }
+        pulse?.invalidate()
+        pulse = nil
+        guard let button = statusItem?.button else { return }
+        guard on else {
+            button.alphaValue = 1
+            return
+        }
+        var dim = false
+        pulse = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
+            dim.toggle()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.5
+                button.animator().alphaValue = dim ? 0.3 : 1
+            }
+        }
+    }
+
     @objc private func toggle() {
         isOpen ? close() : open()
     }
