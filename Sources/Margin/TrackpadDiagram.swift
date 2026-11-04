@@ -24,9 +24,14 @@ struct LiveLevels: Equatable {
 ///
 /// The corners are drawn as separate squares, although on the glass they overlap the edges; a
 /// zone you can point at is easier to edit than an overlap.
+///
+/// In a profile it draws the profile's effective layout, tints the zones the profile changes and
+/// fades the rest.
 struct TrackpadDiagram: View {
     let layout: MarginCore.Layout
     let levels: LiveLevels
+    /// The profile's overrides when showing a profile; nil on the main page.
+    var profileOverrides: PartialLayout?
     let select: (Zone) -> Void
     @State private var hovered: Zone?
 
@@ -63,11 +68,17 @@ struct TrackpadDiagram: View {
     }
 
     private func cell(_ zone: Zone, _ frame: CGRect) -> some View {
-        Button { select(zone) } label: {
+        let emphasis = ZoneEmphasis(zone: zone, profileOverrides: profileOverrides)
+        let shape = RoundedRectangle(cornerRadius: zone.isCorner ? 10 : 8, style: .continuous)
+        return Button { select(zone) } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: zone.isCorner ? 10 : 8, style: .continuous)
-                    .fill(hovered == zone ? Color.accentColor.opacity(0.18) : .clear)
+                shape.fill(fill(emphasis, hovered: hovered == zone))
+                if emphasis == .changed {
+                    shape.strokeBorder(Color.accentColor.opacity(0.55))
+                }
                 ZoneContent(zone: zone, layout: layout, levels: levels, hovered: hovered == zone)
+                    // Faded zones still light up under the pointer, so they read as clickable.
+                    .opacity(emphasis == .faded && hovered != zone ? 0.35 : 1)
             }
             .padding(3)
             .frame(width: frame.width, height: frame.height)
@@ -79,7 +90,13 @@ struct TrackpadDiagram: View {
         }
         .help(zone.title)
         .accessibilityLabel(zone.title)
+        .accessibilityValue(emphasis == .changed ? "Changed in this profile" : "")
         .position(x: frame.midX, y: frame.midY)
+    }
+
+    private func fill(_ emphasis: ZoneEmphasis, hovered: Bool) -> Color {
+        if hovered { return Color.accentColor.opacity(0.18) }
+        return emphasis == .changed ? Color.accentColor.opacity(0.1) : .clear
     }
 }
 
