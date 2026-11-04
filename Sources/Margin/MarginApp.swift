@@ -1,5 +1,6 @@
 import AppKit
 import CMultitouch
+import MarginCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -63,8 +64,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showPreviewWindow() {
-        let settings = CommandLine.arguments.contains("--settings")
-        let window = NSWindow(contentViewController: NSHostingController(rootView: MenuView(showingSettings: settings)))
+        // `--settings` or `--zone <zone>` opens on that page, e.g. `--zone bottomEdge`.
+        let args = CommandLine.arguments
+        var page = MenuPage.main
+        if args.contains("--settings") { page = .settings }
+        if let i = args.firstIndex(of: "--zone"), i + 1 < args.count, let zone = Zone(rawValue: args[i + 1]) {
+            page = .zone(zone)
+        }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: MenuView(page: page)))
         window.title = "Margin Menu Preview"
         window.center()
         window.makeKeyAndOrderFront(nil)
