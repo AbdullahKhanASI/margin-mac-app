@@ -424,7 +424,8 @@ start fires, the buzz when either mute toggles, and the alarm pattern.
   The editor also offers a **Window Snapping** preset button (any edge) and the right-click corner warning (bottom
   corners). When the editor is opened from inside a profile, each picker also has an "Use global" entry.
 - **Settings → App Profiles.** A section listing profiles, each with its app icon, name and an on/off switch.
-  - The **+** button lists running apps that have a normal activation policy.
+  - The **+** button lists running apps that have a normal activation policy, then **Other App…**, which opens
+    the app chooser in `/Applications` for an app that isn't open (added 2026-11-04 after hand-testing).
   - Clicking a profile shows the diagram in profile mode: changed zones are tinted and the rest are faded.
 - **Settings → Edges.** **Reset Layout** restores the default layout.
 - **Settings → Timer.** The sound, notification and Shortcut options above.

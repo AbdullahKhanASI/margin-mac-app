@@ -15,16 +15,28 @@ struct AppProfilesSection: View {
             ForEach(prefs.config.profiles) { profile in
                 ProfileRow(profile: profile, isOn: enabled(profile.bundleID)) { open(profile.bundleID) }
             }
-            AddProfileMenu(existing: Set(prefs.config.profiles.map(\.bundleID))) { app in
-                prefs.addProfile(for: app)
-                if let bundleID = app.bundleIdentifier { open(bundleID) }
-            }
+            AddProfileMenu(existing: Set(prefs.config.profiles.map(\.bundleID)),
+                           add: { app in
+                               prefs.addProfile(for: app)
+                               if let bundleID = app.bundleIdentifier { open(bundleID) }
+                           },
+                           chooseOther: chooseOther)
         }
     }
 
     private func enabled(_ bundleID: String) -> Binding<Bool> {
         Binding(get: { prefs.profile(bundleID)?.enabled ?? false },
                 set: { on in prefs.editProfile(bundleID) { $0.enabled = on } })
+    }
+
+    /// An app that isn't running, picked from /Applications with the same chooser as Launch App.
+    /// Choosing one that already has a profile just opens it.
+    private func chooseOther() {
+        AppChooser.choose { bundleID in
+            guard let bundleID, bundleID != Bundle.main.bundleIdentifier else { return }
+            prefs.addProfile(bundleID: bundleID, name: InstalledApp(bundleID: bundleID)?.name ?? bundleID)
+            open(bundleID)
+        }
     }
 }
 
@@ -57,10 +69,12 @@ private struct ProfileRow: View {
 }
 
 /// The + button: running apps with a normal activation policy, which are the apps a person
-/// switches between. Background agents and menu bar apps never become frontmost.
+/// switches between (background agents and menu bar apps never become frontmost), then
+/// Other App… for one that isn't open.
 private struct AddProfileMenu: View {
     let existing: Set<String>
     let add: (NSRunningApplication) -> Void
+    let chooseOther: () -> Void
 
     var body: some View {
         Menu {
@@ -79,6 +93,8 @@ private struct AddProfileMenu: View {
                     }
                 }
             }
+            Divider()
+            Button("Other App…", action: chooseOther)
         } label: {
             Label("Add App", systemImage: "plus")
         }

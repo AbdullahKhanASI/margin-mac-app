@@ -177,7 +177,11 @@ final class Preferences {
 
     func addProfile(for app: NSRunningApplication) {
         guard let bundleID = app.bundleIdentifier else { return }
-        config.profiles.addProfile(bundleID: bundleID, name: app.localizedName ?? bundleID)
+        addProfile(bundleID: bundleID, name: app.localizedName ?? bundleID)
+    }
+
+    func addProfile(bundleID: String, name: String) {
+        config.profiles.addProfile(bundleID: bundleID, name: name)
     }
 
     func removeProfile(_ bundleID: String) {
