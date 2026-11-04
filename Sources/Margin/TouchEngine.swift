@@ -43,7 +43,7 @@ final class TouchEngine {
 
     private enum Phase {
         case pending   // landed in a zone, waiting to see what the finger does
-        case sliding   // following the finger with a `level` slide
+        case sliding   // following the finger with a `level` or `stepper` slide
         case swiping   // a `flick`, which fires once
         case rejected  // ordinary pointer movement; leave it alone
     }
@@ -69,6 +69,7 @@ final class TouchEngine {
         var muted = false
         var lastDetent = 0
         var detentsFine = false   // whether lastDetent was counted on the precise (denser) scale
+        var stepper: DetentCounter?  // a stepper's notches; it stores no level
         var maxTravel = 0.0
         var swipeFired = false
         var lostAt: Double?
@@ -164,7 +165,9 @@ final class TouchEngine {
             if g.fingerID != f.id {
                 if g.isEngaged, hypot(p.x - g.last.x, p.y - g.last.y) < Tuning.dropoutReach {
                     // Same finger, new identity: shift the origins so the value doesn't jump.
-                    g.stepOrigin += g.along(p) - g.along(g.last)
+                    let shift = g.along(p) - g.along(g.last)
+                    g.stepOrigin += shift
+                    g.stepper?.shift(by: shift)
                     g.start.x += p.x - g.last.x
                     g.last = p
                     g.fingerID = f.id
@@ -224,23 +227,21 @@ final class TouchEngine {
         )
     }
 
-    /// Phase 1 runs only what v1.2 could do. Anything else in the layout (steppers, the timer,
-    /// input volume, system commands…) is treated as unbound until a later phase implements it,
-    /// so it never claims a touch or swallows a click.
+    /// Anything in the layout this build can't run yet (the timer, the spaces and arrow-key
+    /// steppers, window and timer commands, launching apps) is treated as unbound, so it never
+    /// claims a touch or swallows a click.
     private static func runnable(_ slide: SlideAction) -> SlideAction {
         switch slide {
-        case .level(.outputVolume), .level(.brightness): slide
+        case .level: slide
+        case .stepper(let stepper): stepper.shortcuts == nil ? .none : slide
         case .flick(let forward, let back):
             runnable(forward) != .none || runnable(back) != .none ? slide : .none
-        case .none, .level(.inputVolume), .stepper, .timer: .none
+        case .none, .timer: .none
         }
     }
 
     private static func runnable(_ command: Command) -> Command {
-        switch command {
-        case .media, .toggleOutputMute: command
-        default: .none
-        }
+        Actions.canRun(command) ? command : .none
     }
 
     private static func tapCommand(_ layout: MarginCore.Layout, _ zone: Zone) -> Command {
@@ -251,6 +252,7 @@ final class TouchEngine {
         switch slide {
         case .level(.outputVolume): .volume
         case .level(.brightness): .brightness
+        case .level(.inputVolume): .inputVolume
         default: nil
         }
     }
@@ -276,6 +278,12 @@ final class TouchEngine {
                 g.stepOrigin = g.along(p)
                 readLevel(into: &g)
                 engage(g)
+            } else if case .stepper = g.slide, abs(along) > Tuning.slideStart, abs(along) > ratio * abs(across) {
+                g.phase = .sliding
+                let spacing = DetentCounter.spacing(fullRange: Tuning.fullRange, sensitivity: config.sensitivity,
+                                                    notches: config.hapticFeel.notches)
+                g.stepper = DetentCounter(origin: g.along(p), spacing: spacing)
+                engage(g)
             } else if case .flick = g.slide, abs(along) > Tuning.swipeStart, abs(along) > ratio * abs(across) {
                 g.phase = .swiping
                 engage(g)
@@ -284,7 +292,11 @@ final class TouchEngine {
             }
 
         case .sliding:
-            step(&g, to: p)
+            if case .stepper(let stepper) = g.slide {
+                stepNotches(&g, stepper, to: p)
+            } else {
+                step(&g, to: p)
+            }
 
         case .swiping:
             if !g.swipeFired, case .flick(let forward, let back) = g.slide, let edge = g.edge,
@@ -307,6 +319,11 @@ final class TouchEngine {
             }
         case .brightness:
             g.level = SystemControls.brightness().map(Double.init)
+        case .inputVolume:
+            if let mic = SystemControls.inputVolume() {
+                g.level = Double(mic.volume)
+                g.muted = mic.muted
+            }
         case nil:
             break
         }
@@ -341,6 +358,12 @@ final class TouchEngine {
             }
         case .brightness:
             applied = SystemControls.setBrightness(Float(newLevel))
+        case .inputVolume:
+            applied = SystemControls.setInputVolume(Float(newLevel))
+            if applied, g.muted, newLevel > level {
+                SystemControls.setInputMuted(false)
+                g.muted = false
+            }
         }
         guard applied else {
             g.level = nil
@@ -365,6 +388,8 @@ final class TouchEngine {
 
     /// Fallback for outputs that can't be set directly: press the media keys once per step.
     private func stepWithKeys(_ g: inout Gesture, role: LevelKind, to p: CGPoint, fine: Bool) {
+        // There are no media keys for the microphone; a mic without a settable volume does nothing.
+        guard role != .inputVolume else { return }
         let size = Tuning.baseStep / config.sensitivity / (fine ? 2 : 1)
         let up: MediaKey = role == .volume ? .soundUp : .brightnessUp
         let down: MediaKey = role == .volume ? .soundDown : .brightnessDown
@@ -384,6 +409,30 @@ final class TouchEngine {
             changed = true
         }
         if changed { haptic(g.device, softer: fine) }
+    }
+
+    /// A stepper: one command per notch crossed, each with a tick, and a running count in the
+    /// overlay. The count lives in the gesture, so it starts again from zero on the next touch.
+    private func stepNotches(_ g: inout Gesture, _ stepper: Stepper, to p: CGPoint) {
+        guard var counter = g.stepper, let shortcuts = stepper.shortcuts else { return }
+        let crossed = counter.move(to: g.along(p))
+        g.stepper = counter
+        guard crossed != 0 else { return }
+        for _ in 0..<abs(crossed) {
+            Actions.fire(.keystroke(crossed > 0 ? shortcuts.forward : shortcuts.back))
+        }
+        haptic(g.device)
+        let label = stepper.label(count: counter.notch)
+        let symbol = Self.symbol(for: stepper, count: counter.notch)
+        DispatchQueue.main.async { LevelOverlay.shared.showCounter(symbol: symbol, label: label) }
+    }
+
+    private static func symbol(for stepper: Stepper, count: Int) -> String {
+        switch stepper {
+        case .undoRedo: count > 0 ? "arrow.uturn.forward" : "arrow.uturn.backward"
+        case .tabs: count < 0 ? "arrow.left.square" : "arrow.right.square"
+        case .spaces, .arrowKeys: "arrow.left.and.right"
+        }
     }
 
     private func engage(_ g: Gesture) {
@@ -417,21 +466,13 @@ final class TouchEngine {
 
     /// Runs a tap or flick command, with its haptic, and reports the gesture.
     private func perform(_ command: Command, device: UInt64, zone: Zone, kind: GestureKind) {
+        Actions.fire(command)
         switch command {
-        case .media(let key):
-            send(key)
-            haptic(device, force: true)
-        case .toggleOutputMute:
-            if let out = SystemControls.outputVolume(), SystemControls.setMuted(!out.muted) {
-                showOverlay(.volume, Double(out.volume), muted: !out.muted)
-            } else {
-                send(.mute)
-            }
+        case .toggleOutputMute, .toggleInputMute:
             // A heavier buzz, so mute can be felt without looking.
             if config.haptics { SystemControls.buzz(device: device) }
         default:
-            // Not reachable in phase 1: `begin` only binds runnable commands.
-            return
+            haptic(device, force: true)
         }
         announce(zone, kind)
     }
