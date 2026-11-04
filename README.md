@@ -56,9 +56,13 @@ Every edge and corner can be changed to something else, and each app can have it
   trackpad diagram and pick what it does.
 - **Lots of actions.**
   - *Slide:* volume, microphone, brightness, undo / redo, switch tabs, switch Spaces, arrow keys, or a *flick* that
-    runs one command each way (next / previous track by default).
+    runs one command each way (next / previous track by default), or the timer dial.
   - *Double-tap:* play / pause, next / previous track, mute, mute microphone, lock screen, screenshot, Mission Control,
-    App Windows, Show Desktop, screen saver, sleep display, launch any app, or any keyboard shortcut you record.
+    App Windows, Show Desktop, screen saver, sleep display, start / pause / cancel a timer, launch any app, or any
+    keyboard shortcut you record.
+- **Timer dial.** Turn any edge into a dial: slide to set 1 to 90 minutes, lift to start. The time left shows in the
+  menu bar, and when it ends the trackpad buzzes as a silent alarm. It can also play a chime, show a notification and
+  run a Shortcut on start and end (to turn a Focus on and off, say).
 - **Hot corners on the trackpad.** Double-tap a corner. Taps are told apart from real clicks, including a right-click
   corner if you use one.
 - **App profiles.** Give the trackpad different actions while a particular app is in front, such as tab switching on
@@ -174,6 +178,26 @@ Double-taps on the left and right edges are allowed, but they can catch taps you
 
 To go back to the original layout, use **Settings → Reset Layout**.
 
+### Timer
+
+<img src="docs/images/timer.png" width="300" align="right" alt="The menu with a running timer: time left, pause and cancel">
+
+1. Click an edge in the diagram (the top edge is free by default) and set its **Slide** action to **Timer**.
+2. Slide along that edge to set the time: 1-minute steps up to 10 minutes, then 5-minute steps up to 90. The overlay
+   shows the time. **Lift your finger to start.**
+3. The time left appears next to the menu bar icon, and in the menu with **Pause** and **Cancel** buttons. Slide the
+   edge again to change a running timer, or slide it to zero to cancel.
+4. When time's up, the overlay says so and the trackpad buzzes whenever a finger rests on it. **Tap anywhere on the
+   trackpad** to dismiss it.
+
+For a fixed timer, set a corner's double-tap to **Start Timer…** and choose a length, such as a 25-minute focus block.
+Timers keep running through sleep and restarts.
+
+In **Settings → Timer** you can pick how insistent the alarm is (Gentle, Normal, Insistent, with a **Try** button), add
+a chime or a notification, and run a Shortcut when the timer starts and ends.
+
+<br clear="right">
+
 ### App profiles
 
 A profile changes some zones while a chosen app is in front. Everything else follows your main layout.
@@ -203,6 +227,8 @@ Open the menu and click **Settings**.
 - **Reset Layout:** put every zone back to the default.
 
 **App Profiles:** see [App profiles](#app-profiles).
+
+**Timer:** alarm strength, sound, notification and Shortcuts. See [Timer](#timer).
 
 **While Sliding**
 - **Freeze Cursor:** hide the pointer and keep it still during a slide.
@@ -294,6 +320,7 @@ Handy launch flags for UI work (pass them to the `Margin` binary):
 | `--preview-menu` | Show the menu in an ordinary window. Add `--settings`, `--zone bottomEdge` or `--profile <bundle ID>` to open a page. |
 | `--preview-overlay` | Sweep the level overlay without changing the real volume or brightness |
 | `--open-panel` | Open the menu bar panel on launch (add `--settings` for Settings) |
+| `--preview-timer` | Start a 10-second timer, to try the alarm |
 | `--setup-guide` | Show the setup guide |
 | `--no-move` | Don't offer to move the app to /Applications |
 
@@ -320,8 +347,8 @@ Releases are built by GitHub Actions. See [docs/RELEASING.md](docs/RELEASING.md)
 Margin uses private APIs and needs Accessibility access, so it can't be sandboxed or sold on the Mac App Store. It's
 distributed directly instead.
 
-Work in progress is described in [docs/specs/configurable-edges.md](docs/specs/configurable-edges.md): a timer dial and
-window snapping are next.
+Work in progress is described in [docs/specs/configurable-edges.md](docs/specs/configurable-edges.md): window snapping
+is next.
 
 ## License
 
