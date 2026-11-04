@@ -20,7 +20,13 @@ let left = (0..<midX).first { isArt($0, midY) }!
 let right = (midX..<width).reversed().first { isArt($0, midY) }!
 let top = (0..<midY).first { isArt(midX, $0) }!
 let bottom = (midY..<height).reversed().first { isArt(midX, $0) }!
-let crop = NSRect(x: left, y: top, width: right - left + 1, height: bottom - top + 1)
+// Pull the crop in slightly so the art's own anti-aliased rim (half black surround) is left
+// out; otherwise a light icon gets a dark outline.
+let inset = max(2, (right - left) / 200)
+let crop = NSRect(x: left + inset, y: top + inset, width: right - left + 1 - 2 * inset, height: bottom - top + 1 - 2 * inset)
+// The tile's own colour just inside its top edge, used under the art so the clip's
+// anti-aliased edge blends into the tile rather than into black.
+let edgeColor = source.colorAt(x: midX, y: Int(crop.minY) + inset) ?? .black
 
 // Corner radius from where the art starts along the top-left diagonal: a 45° point on a
 // corner of radius R sits R·(1 − 1/√2) in from both edges.
@@ -52,7 +58,7 @@ func drawIcon(size: CGFloat) -> NSBitmapImageRep {
     shadow.shadowBlurRadius = 24 * s
     shadow.shadowOffset = NSSize(width: 0, height: -10 * s)
     shadow.set()
-    NSColor.black.setFill()
+    edgeColor.setFill()
     mask.fill()
     NSGraphicsContext.restoreGraphicsState()
 
