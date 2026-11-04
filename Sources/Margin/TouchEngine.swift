@@ -70,7 +70,7 @@ final class TouchEngine {
 
         var isEngaged: Bool { phase == .sliding || phase == .swiping }
 
-        /// Position along the edge being slid: y on the side edges, x on the bottom.
+        /// Position along the edge being slid: y on the side edges, x on the top and bottom.
         func along(_ p: CGPoint) -> Double { edge?.slidesVertically == false ? p.x : p.y }
     }
 
@@ -197,16 +197,8 @@ final class TouchEngine {
             slide = Self.runnable(c.layout.edge(edge).slide)
         }
         // A corner bound to nothing lets its taps fall through to the edge under it.
-        var tapZone: Zone?
-        var tap = Command.none
-        if let corner = hit.corner, Self.runnable(c.layout.corner(corner)) != .none {
-            tapZone = corner
-            tap = c.layout.corner(corner)
-        } else if let edge = hit.edge, hit.edgeGestures.contains(.doubleTap),
-                  Self.runnable(c.layout.edge(edge).tap) != .none {
-            tapZone = edge
-            tap = c.layout.edge(edge).tap
-        }
+        let tapZone = hit.tapZone { Self.runnable(Self.tapCommand(c.layout, $0)) != .none }
+        let tap = tapZone.map { Self.tapCommand(c.layout, $0) } ?? .none
         guard slide != .none || tap != .none else { return nil }
 
         InputGate.shared.setTapCandidate(tap != .none)
@@ -244,6 +236,10 @@ final class TouchEngine {
         }
     }
 
+    private static func tapCommand(_ layout: MarginCore.Layout, _ zone: Zone) -> Command {
+        zone.isCorner ? layout.corner(zone) : layout.edge(zone).tap
+    }
+
     private static func levelKind(_ slide: SlideAction) -> LevelKind? {
         switch slide {
         case .level(.outputVolume): .volume
@@ -260,7 +256,7 @@ final class TouchEngine {
         if g.maxTravel > Tuning.tapTravel { InputGate.shared.setTapCandidate(false) }
 
         // Travel along the edge, and across it. The side edges must be 1.5× more along than
-        // across to engage, the bottom 2×, as in v1.2.
+        // across to engage, the top and bottom 2×, as in v1.2.
         let vertical = g.edge?.slidesVertically ?? true
         let along = vertical ? dy : dx
         let across = vertical ? dx : dy
