@@ -336,8 +336,10 @@ Handy launch flags for UI work (pass them to the `Margin` binary):
 | `--setup-guide` | Show the setup guide |
 | `--no-move` | Don't offer to move the app to /Applications |
 
-The app icon artwork is `Resources/AppIcon-source.png`. Run `swift Scripts/make-icon.swift` after changing it to
-regenerate `Resources/AppIcon.icns`.
+The app icon artwork is `Resources/AppIcon-source.png`: a rounded-square tile on a solid black background, at least
+1024 px square. Run `swift Scripts/make-icon.swift` after changing it. The script cuts the tile out, places it on
+Apple's icon grid with a drop shadow, and regenerates `Resources/AppIcon.icns` (16 to 1024 px) and
+`Resources/AppIcon-1024.png` (used at the top of this README).
 
 Releases are built by GitHub Actions. See [docs/RELEASING.md](docs/RELEASING.md).
 
