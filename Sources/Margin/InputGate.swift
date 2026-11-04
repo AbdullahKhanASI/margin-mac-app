@@ -1,7 +1,8 @@
 import AppKit
 
 /// Owns the CGEvent tap. While a slide is in progress it pins the (hidden) pointer in place,
-/// and it swallows the tap-to-click that a Quick Mute or media-strip tap would otherwise cause.
+/// it swallows the tap-to-click that a gesture tap would otherwise cause, and it notes physical
+/// clicks so the engine can tell them from taps.
 final class InputGate {
     static let shared = InputGate()
 
@@ -18,6 +19,11 @@ final class InputGate {
     private var lastLift: TimeInterval = 0
     private var tapCandidate = false
     private var droppedDowns = Set<UInt32>()
+    private var physicalClick: TimeInterval?
+
+    /// When the last physical click arrived, as `systemUptime`. The engine checks it so that
+    /// pressing the trackpad twice in a corner (a double-click on a file) isn't a double-tap.
+    var lastPhysicalClick: TimeInterval? { lock.withLock { physicalClick } }
 
     var isInstalled: Bool { lock.withLock { tap != nil } }
 
@@ -111,6 +117,7 @@ final class InputGate {
             }
         case .leftMouseDown, .rightMouseDown:
             // Physical clicks happen with a finger down; tap-to-click arrives just after lift.
+            if fingerDown { physicalClick = ProcessInfo.processInfo.systemUptime }
             let isTapClick = !fingerDown && tapCandidate
                 && ProcessInfo.processInfo.systemUptime - lastLift < 0.35
             if frozen || isTapClick {

@@ -29,7 +29,11 @@ func multitouchFrame(_ touches: UnsafePointer<MRTouch>?, _ count: Int32, _ times
     }
     // Fingers resting on a Magic Mouse say nothing about tap-to-click on the trackpad.
     if isMouse == 0 { InputGate.shared.fingerState(down: !fingers.isEmpty) }
-    TouchEngine.shared.enqueue(fingers, timestamp: timestamp, device: deviceID, isMouse: isMouse != 0)
+    // `timestamp` is MultitouchSupport's own clock. InputGate times clicks with `systemUptime`,
+    // which nothing guarantees is the same clock, so frames also carry `systemUptime` taken here,
+    // as they arrive, for comparing against clicks.
+    TouchEngine.shared.enqueue(fingers, timestamp: timestamp, uptime: ProcessInfo.processInfo.systemUptime,
+                               device: deviceID, isMouse: isMouse != 0)
 }
 
 /// Turns raw finger positions into edge gestures. `ZoneGeometry` says which zone a touch starts in;
@@ -48,6 +52,7 @@ final class TouchEngine {
         var device: UInt64
         var fingerID: Int32
         var startTime: Double
+        var startUptime: Double   // `startTime` on the `systemUptime` clock, for the click guard
         var start: CGPoint
         var last: CGPoint
         var anchor: CGPoint
@@ -96,7 +101,7 @@ final class TouchEngine {
     private var gesture: Gesture?
     private var ignoredFinger: Int32?
     private var blockedUntilLift = false
-    private var lastTap: [Zone: Double] = [:]   // per zone, so a tap in one zone never pairs with another
+    private var taps = DoubleTapTracker(window: Tuning.doubleTapWindow)
     private var lastHaptic = 0.0
     private var dropoutToken = 0
 
@@ -115,13 +120,13 @@ final class TouchEngine {
         }
     }
 
-    func enqueue(_ fingers: [Finger], timestamp: Double, device: UInt64, isMouse: Bool) {
-        queue.async { self.process(fingers, timestamp, device, isMouse) }
+    func enqueue(_ fingers: [Finger], timestamp: Double, uptime: Double, device: UInt64, isMouse: Bool) {
+        queue.async { self.process(fingers, timestamp, uptime, device, isMouse) }
     }
 
     // MARK: Frame processing
 
-    private func process(_ fingers: [Finger], _ ts: Double, _ device: UInt64, _ isMouse: Bool) {
+    private func process(_ fingers: [Finger], _ ts: Double, _ uptime: Double, _ device: UInt64, _ isMouse: Bool) {
         guard config.enabled else { return }
         // One gesture at a time; ignore a second trackpad while the first is in use.
         if let g = gesture, g.device != device { return }
@@ -140,7 +145,7 @@ final class TouchEngine {
                     scheduleDropoutEnd()
                 }
             } else {
-                finish(g, at: ts, cancelled: false)
+                finish(g, at: ts, uptime: uptime, cancelled: false)
                 gesture = nil
             }
 
@@ -151,7 +156,7 @@ final class TouchEngine {
 
             guard var g = gesture else {
                 guard f.id != ignoredFinger else { return }
-                gesture = begin(f, p, ts, device, isMouse)
+                gesture = begin(f, p, ts, uptime, device, isMouse)
                 if gesture == nil { ignoredFinger = f.id }
                 return
             }
@@ -164,8 +169,8 @@ final class TouchEngine {
                     g.last = p
                     g.fingerID = f.id
                 } else {
-                    finish(g, at: ts, cancelled: false)
-                    gesture = begin(f, p, ts, device, isMouse)
+                    finish(g, at: ts, uptime: uptime, cancelled: false)
+                    gesture = begin(f, p, ts, uptime, device, isMouse)
                     if gesture == nil { ignoredFinger = f.id }
                     return
                 }
@@ -181,7 +186,8 @@ final class TouchEngine {
         }
     }
 
-    private func begin(_ f: Finger, _ p: CGPoint, _ ts: Double, _ device: UInt64, _ isMouse: Bool) -> Gesture? {
+    private func begin(_ f: Finger, _ p: CGPoint, _ ts: Double, _ uptime: Double, _ device: UInt64,
+                       _ isMouse: Bool) -> Gesture? {
         let c = config
         if c.requireModifier {
             let mods = NSEvent.modifierFlags
@@ -206,6 +212,7 @@ final class TouchEngine {
             device: device,
             fingerID: f.id,
             startTime: ts,
+            startUptime: uptime,
             start: p,
             last: p,
             anchor: CGEvent(source: nil)?.location ?? .zero,
@@ -389,7 +396,7 @@ final class TouchEngine {
         }
     }
 
-    private func finish(_ g: Gesture, at ts: Double, cancelled: Bool) {
+    private func finish(_ g: Gesture, at ts: Double, uptime: Double, cancelled: Bool) {
         if g.isEngaged {
             InputGate.shared.unfreeze()
             InputGate.shared.setScrollSuppressed(false)
@@ -401,11 +408,10 @@ final class TouchEngine {
               let zone = g.tapZone, g.tap != .none
         else { return }
 
-        if let last = lastTap[zone], ts - last < Tuning.doubleTapWindow {
-            lastTap[zone] = nil
+        let clean = TapGuard.isClean(touchStart: g.startUptime, lift: uptime,
+                                     lastPhysicalClick: InputGate.shared.lastPhysicalClick)
+        if taps.tap(in: zone, at: ts, clean: clean) {
             perform(g.tap, device: g.device, zone: zone, kind: .doubleTap)
-        } else {
-            lastTap[zone] = ts
         }
     }
 
@@ -431,7 +437,7 @@ final class TouchEngine {
     }
 
     private func cancel() {
-        if let g = gesture { finish(g, at: 0, cancelled: true) }
+        if let g = gesture { finish(g, at: 0, uptime: 0, cancelled: true) }
         gesture = nil
         InputGate.shared.setTapCandidate(false)
     }
@@ -441,7 +447,9 @@ final class TouchEngine {
         let token = dropoutToken
         queue.asyncAfter(deadline: .now() + Tuning.dropoutGrace) {
             guard token == self.dropoutToken, let g = self.gesture, g.lostAt != nil else { return }
-            self.finish(g, at: g.lostAt ?? 0, cancelled: false)
+            // Only engaged slides wait out a dropout, and they never become taps, so the
+            // click-guard time doesn't matter here.
+            self.finish(g, at: g.lostAt ?? 0, uptime: ProcessInfo.processInfo.systemUptime, cancelled: false)
             self.gesture = nil
         }
     }
