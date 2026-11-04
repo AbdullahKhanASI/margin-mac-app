@@ -14,6 +14,13 @@ final class MenuPanel: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var monitors: [Any] = []
     private(set) var isOpen = false
+    /// While set, gets every key press and modifier change in the panel before the panel's own
+    /// shortcuts (Escape closes it). The shortcut recorder uses it so Escape cancels a
+    /// recording instead of closing the menu. Return the event to let it through, nil to eat it.
+    var keyInterceptor: ((NSEvent) -> NSEvent?)?
+    /// Windows opened on top of the panel, such as the app chooser. While one is up, its clicks
+    /// and its Escape belong to it and mustn't close the menu.
+    private var childWindows = 0
 
     func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -48,20 +55,36 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         // (the menu bar routes it), so leave that one to `toggle`; otherwise the panel would close
         // and immediately reopen.
         if let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
-            guard let self, !self.isOverStatusItem(NSEvent.mouseLocation) else { return }
+            guard let self, self.childWindows == 0, !self.isOverStatusItem(NSEvent.mouseLocation) else { return }
             self.close()
         }) {
             monitors.append(global)
         }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-            if event.keyCode == 53 { // Escape
-                self?.close()
+        if let local = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged], handler: { [weak self] event in
+            guard let self, self.childWindows == 0 else { return event }
+            if let interceptor = self.keyInterceptor { return interceptor(event) }
+            if event.type == .keyDown, event.keyCode == 53 { // Escape
+                self.close()
                 return nil
             }
             return event
         }) {
             monitors.append(local)
         }
+    }
+
+    /// The level for a window that has to show above the panel, which sits at `.popUpMenu`.
+    static let childLevel = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
+
+    /// Call before showing a window over the panel, and `endChildWindow` once it's gone.
+    func beginChildWindow() {
+        childWindows += 1
+    }
+
+    /// Hands the keyboard back to the panel, so it's as it was before the child window opened.
+    func endChildWindow() {
+        childWindows = max(childWindows - 1, 0)
+        if childWindows == 0, isOpen { panel?.makeKeyAndOrderFront(nil) }
     }
 
     private func isOverStatusItem(_ point: NSPoint) -> Bool {
@@ -72,6 +95,7 @@ final class MenuPanel: NSObject, NSWindowDelegate {
     func close() {
         guard isOpen else { return }
         isOpen = false
+        keyInterceptor = nil
         panel?.orderOut(nil)
         statusItem?.button?.highlight(false)
         // Reset while hidden, so the next open starts on the home page without a flash of Settings.
