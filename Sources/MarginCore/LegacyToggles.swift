@@ -1,6 +1,7 @@
 // The five v1.2 booleans, expressed as views onto a `Layout`. Migration builds a layout by setting
-// them, and the menu's toggles read and write them, so both follow one set of rules. Phase 3's
-// zone editor replaces the toggles; these can go with them.
+// them, so a v1.2 user's saved switches still turn into the layout they had. The menu's toggles
+// that also used them are gone now the zone editor replaces them; migration still needs the
+// setters, and the tests read the getters back.
 
 extension Layout {
     /// Builds the layout a v1.2 user had from their saved booleans.

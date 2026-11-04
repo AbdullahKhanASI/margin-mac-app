@@ -15,6 +15,9 @@ final class AppState {
     var volume: Float = 0
     var muted = false
     var brightness: Float?
+    /// Nil when there's no input device, or it has no volume to read.
+    var micVolume: Float?
+    var micMuted = false
 
     var launchAtLogin: Bool {
         get {
@@ -39,6 +42,9 @@ final class AppState {
             muted = output.muted
         }
         brightness = SystemControls.brightness()
+        let mic = SystemControls.inputVolume()
+        micVolume = mic?.volume
+        micMuted = mic?.muted ?? false
     }
 
     func requestAccessibility() {

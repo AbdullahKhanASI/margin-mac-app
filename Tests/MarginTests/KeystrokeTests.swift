@@ -44,30 +44,50 @@ final class DetentCounterTests: XCTestCase {
 final class StepperTests: XCTestCase {
     typealias M = KeyCombo.Modifier
 
-    func testUndoRedo() throws {
-        let keys = try XCTUnwrap(Stepper.undoRedo.shortcuts)
+    func testUndoRedo() {
+        let keys = Stepper.undoRedo.shortcuts(slidingVertically: true)
         XCTAssertEqual(keys.back, KeyCombo(keyCode: 6, modifiers: M.command))              // ⌘Z
         XCTAssertEqual(keys.forward, KeyCombo(keyCode: 6, modifiers: M.shift | M.command)) // ⇧⌘Z
     }
 
-    func testTabs() throws {
-        let keys = try XCTUnwrap(Stepper.tabs.shortcuts)
+    func testTabs() {
+        let keys = Stepper.tabs.shortcuts(slidingVertically: false)
         XCTAssertEqual(keys.forward, KeyCombo(keyCode: 48, modifiers: M.control))           // ⌃Tab
         XCTAssertEqual(keys.back, KeyCombo(keyCode: 48, modifiers: M.control | M.shift))    // ⌃⇧Tab
     }
 
-    func testLaterSteppersAreNotRunnable() {
-        XCTAssertNil(Stepper.spaces.shortcuts)
-        XCTAssertNil(Stepper.arrowKeys.shortcuts)
+    func testSpacesGoRightWhicheverWayTheEdgeRuns() {
+        for vertical in [true, false] {
+            let keys = Stepper.spaces.shortcuts(slidingVertically: vertical)
+            XCTAssertEqual(keys.forward, KeyCombo(keyCode: 124, modifiers: M.control))      // ⌃→
+            XCTAssertEqual(keys.back, KeyCombo(keyCode: 123, modifiers: M.control))         // ⌃←
+            // Posted as a real arrow key, or Mission Control ignores it.
+            XCTAssertEqual(keys.forward.postedFlags, M.control | M.numericPad | M.function)
+        }
+    }
+
+    func testArrowKeysFollowTheEdge() {
+        let side = Stepper.arrowKeys.shortcuts(slidingVertically: true)
+        XCTAssertEqual(side.forward, KeyCombo(keyCode: 126))   // ↑
+        XCTAssertEqual(side.back, KeyCombo(keyCode: 125))      // ↓
+        let bottom = Stepper.arrowKeys.shortcuts(slidingVertically: false)
+        XCTAssertEqual(bottom.forward, KeyCombo(keyCode: 124)) // →
+        XCTAssertEqual(bottom.back, KeyCombo(keyCode: 123))    // ←
     }
 
     func testLabels() {
-        XCTAssertEqual(Stepper.undoRedo.label(count: -3), "Undo ×3")
-        XCTAssertEqual(Stepper.undoRedo.label(count: 1), "Redo ×1")
-        XCTAssertEqual(Stepper.undoRedo.label(count: 0), "Undo")
-        XCTAssertEqual(Stepper.tabs.label(count: 2), "Tab →2")
-        XCTAssertEqual(Stepper.tabs.label(count: -1), "Tab ←1")
-        XCTAssertEqual(Stepper.tabs.label(count: 0), "Tab")
+        XCTAssertEqual(Stepper.undoRedo.label(count: -3, slidingVertically: true), "Undo ×3")
+        XCTAssertEqual(Stepper.undoRedo.label(count: 1, slidingVertically: true), "Redo ×1")
+        XCTAssertEqual(Stepper.undoRedo.label(count: 0, slidingVertically: true), "Undo")
+        XCTAssertEqual(Stepper.tabs.label(count: 2, slidingVertically: false), "Tab →2")
+        XCTAssertEqual(Stepper.tabs.label(count: -1, slidingVertically: false), "Tab ←1")
+        XCTAssertEqual(Stepper.tabs.label(count: 0, slidingVertically: false), "Tab")
+        XCTAssertEqual(Stepper.spaces.label(count: 2, slidingVertically: true), "Space →2")
+        XCTAssertEqual(Stepper.spaces.label(count: -1, slidingVertically: false), "Space ←1")
+        XCTAssertEqual(Stepper.arrowKeys.label(count: 3, slidingVertically: true), "Arrow ↑3")
+        XCTAssertEqual(Stepper.arrowKeys.label(count: -2, slidingVertically: true), "Arrow ↓2")
+        XCTAssertEqual(Stepper.arrowKeys.label(count: -1, slidingVertically: false), "Arrow ←1")
+        XCTAssertEqual(Stepper.arrowKeys.label(count: 0, slidingVertically: false), "Arrow")
     }
 
     /// The modifier constants must be CGEventFlags' bits (and NSEvent's, which match).

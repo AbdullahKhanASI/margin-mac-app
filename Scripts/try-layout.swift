@@ -9,7 +9,7 @@
 //
 // Presets can be stacked; each changes only the zones it names. It quits Margin first, because a
 // running Margin would write its own copy back, then relaunches it. Every other setting is kept.
-// Until phase 3's zone editor, this is the only way to set these.
+// The zone editor in the menu sets all of these now; this stays as a quick way to load a test layout.
 import Foundation
 
 let domain = "com.abdullahkhan.Margin" as CFString

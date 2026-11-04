@@ -77,8 +77,8 @@ public enum ShowDesktopShortcut {
 
 extension Stepper {
     /// The shortcut for one notch forward (up a side edge, right along the top or bottom) and one
-    /// back. Nil for steppers this build can't run yet.
-    public var shortcuts: (forward: KeyCombo, back: KeyCombo)? {
+    /// back. Only the arrow keys care which way the edge runs.
+    public func shortcuts(slidingVertically vertical: Bool) -> (forward: KeyCombo, back: KeyCombo) {
         typealias M = KeyCombo.Modifier
         typealias K = KeyCombo.Key
         switch self {
@@ -87,14 +87,20 @@ extension Stepper {
             return (KeyCombo(keyCode: K.z, modifiers: M.shift | M.command), KeyCombo(keyCode: K.z, modifiers: M.command))
         case .tabs:
             return (KeyCombo(keyCode: K.tab, modifiers: M.control), KeyCombo(keyCode: K.tab, modifiers: M.control | M.shift))
-        case .spaces, .arrowKeys:
-            return nil
+        case .spaces:
+            // Forward is the Space to the right, whichever way the edge runs.
+            return (KeyCombo(keyCode: K.rightArrow, modifiers: M.control), KeyCombo(keyCode: K.leftArrow, modifiers: M.control))
+        case .arrowKeys:
+            // The key points the way the finger moves, so a side edge nudges up and down.
+            return vertical
+                ? (KeyCombo(keyCode: K.upArrow), KeyCombo(keyCode: K.downArrow))
+                : (KeyCombo(keyCode: K.rightArrow), KeyCombo(keyCode: K.leftArrow))
         }
     }
 
     /// The overlay's running count, from the net number of notches since the finger landed:
-    /// "Undo ×3", "Redo ×1", "Tab →2", "Tab ←1".
-    public func label(count: Int) -> String {
+    /// "Undo ×3", "Redo ×1", "Tab →2", "Space ←1", "Arrow ↑4".
+    public func label(count: Int, slidingVertically vertical: Bool) -> String {
         let n = abs(count)
         switch self {
         case .undoRedo:
@@ -103,9 +109,24 @@ extension Stepper {
         case .tabs:
             if count == 0 { return "Tab" }
             return count < 0 ? "Tab ←\(n)" : "Tab →\(n)"
-        case .spaces, .arrowKeys:
-            // Not runnable yet; worded when they are.
-            return "\(count)"
+        case .spaces:
+            if count == 0 { return "Space" }
+            return count < 0 ? "Space ←\(n)" : "Space →\(n)"
+        case .arrowKeys:
+            if count == 0 { return "Arrow" }
+            let arrow = vertical ? (count < 0 ? "↓" : "↑") : (count < 0 ? "←" : "→")
+            return "Arrow \(arrow)\(n)"
+        }
+    }
+
+    /// The overlay's symbol for the direction the count has gone.
+    public func symbol(count: Int, slidingVertically vertical: Bool) -> String {
+        switch self {
+        case .undoRedo: count > 0 ? "arrow.uturn.forward" : "arrow.uturn.backward"
+        case .tabs: count < 0 ? "arrow.left.square" : "arrow.right.square"
+        case .spaces: count < 0 ? "rectangle.lefthalf.inset.filled.arrow.left" : "rectangle.righthalf.inset.filled.arrow.right"
+        case .arrowKeys:
+            vertical ? (count < 0 ? "arrow.down" : "arrow.up") : (count < 0 ? "arrow.left" : "arrow.right")
         }
     }
 }

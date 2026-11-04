@@ -56,7 +56,7 @@ public enum WindowAction: String, Codable, CaseIterable, Sendable {
 
 /// A recorded shortcut. `modifiers` holds a `CGEventFlags` raw value; it's stored as a plain
 /// integer so this module stays free of CoreGraphics.
-public struct KeyCombo: Codable, Equatable, Sendable {
+public struct KeyCombo: Codable, Hashable, Sendable {
     public var keyCode: UInt16
     public var modifiers: UInt64
 
@@ -67,7 +67,7 @@ public struct KeyCombo: Codable, Equatable, Sendable {
 }
 
 /// A one-shot action, fired by a tap, an inward swipe, a flick or a stepper notch.
-public enum Command: Codable, Equatable, Sendable {
+public enum Command: Codable, Hashable, Sendable {
     case none
     // Media and sound
     case media(MediaKey)
@@ -93,7 +93,7 @@ public enum Command: Codable, Equatable, Sendable {
 }
 
 /// What sliding along an edge does.
-public enum SlideAction: Codable, Equatable, Sendable {
+public enum SlideAction: Codable, Hashable, Sendable {
     case none
     case level(LevelSource)                      // continuous 0–1, follows the finger
     case stepper(Stepper)                        // one command per notch
