@@ -335,7 +335,12 @@ final class TouchEngine {
         let rate = config.sensitivity / Tuning.fullRange / (fine ? Tuning.fineSlowdown : 1)
         let newLevel = min(max(level + (g.along(p) - g.stepOrigin) * rate, 0), 1)
         g.stepOrigin = g.along(p)
-        guard newLevel != level else { return }
+        guard newLevel != level else {
+            // Already at 0% or 100%: nothing to set, but the overlay still shows the level, so a
+            // slide past the end says "already full" or "already off" instead of seeming dead.
+            showOverlay(role, level, muted: g.muted, changed: false)
+            return
+        }
 
         let applied: Bool
         switch role {
@@ -493,10 +498,11 @@ final class TouchEngine {
         }
     }
 
-    private func showOverlay(_ kind: LevelKind, _ level: Double, muted: Bool) {
+    /// `changed` is false when the level stayed put, so the menu isn't asked to re-read it.
+    private func showOverlay(_ kind: LevelKind, _ level: Double, muted: Bool, changed: Bool = true) {
         DispatchQueue.main.async {
             LevelOverlay.shared.show(kind, level: level, muted: muted)
-            NotificationCenter.default.post(name: .marginLevelsChanged, object: nil)
+            if changed { NotificationCenter.default.post(name: .marginLevelsChanged, object: nil) }
         }
     }
 
