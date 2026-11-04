@@ -1,4 +1,5 @@
 import Foundation
+import MarginCore
 import Observation
 import SwiftUI
 
@@ -55,11 +56,12 @@ struct EngineConfig: Codable, Equatable {
     var haptics = true
     var hapticStrength = HapticStrength.medium
     var hapticFeel = HapticFeel.standard
-    var quickMute = true
-    var mediaStrip = true
-    var mediaPlayPause = true
-    var reverseMediaSwipe = false
-    var swapSides = false
+    /// What each zone does. Replaces v1.2's swapSides, quickMute, mediaStrip, mediaPlayPause and
+    /// reverseMediaSwipe booleans, which are read once for migration and never written again.
+    /// Qualified because SwiftUI also has a `Layout`.
+    var layout = MarginCore.Layout.default
+    /// Per-app overrides. Saved now so the format is stable; nothing applies them until phase 4.
+    var profiles: [AppProfile] = []
     var bottomQuarterOnly = false
     var requireModifier = false
     var freezeCursor = true
@@ -82,11 +84,9 @@ struct EngineConfig: Codable, Equatable {
         haptics = try c.decodeIfPresent(Bool.self, forKey: .haptics) ?? d.haptics
         hapticStrength = try c.decodeIfPresent(HapticStrength.self, forKey: .hapticStrength) ?? d.hapticStrength
         hapticFeel = try c.decodeIfPresent(HapticFeel.self, forKey: .hapticFeel) ?? d.hapticFeel
-        quickMute = try c.decodeIfPresent(Bool.self, forKey: .quickMute) ?? d.quickMute
-        mediaStrip = try c.decodeIfPresent(Bool.self, forKey: .mediaStrip) ?? d.mediaStrip
-        mediaPlayPause = try c.decodeIfPresent(Bool.self, forKey: .mediaPlayPause) ?? d.mediaPlayPause
-        reverseMediaSwipe = try c.decodeIfPresent(Bool.self, forKey: .reverseMediaSwipe) ?? d.reverseMediaSwipe
-        swapSides = try c.decodeIfPresent(Bool.self, forKey: .swapSides) ?? d.swapSides
+        // Settings saved by v1.2 have no layout; it's rebuilt from their old booleans.
+        layout = try SettingsMigration.decodeLayout(from: decoder)
+        profiles = try c.decodeIfPresent([AppProfile].self, forKey: .profiles) ?? d.profiles
         bottomQuarterOnly = try c.decodeIfPresent(Bool.self, forKey: .bottomQuarterOnly) ?? d.bottomQuarterOnly
         requireModifier = try c.decodeIfPresent(Bool.self, forKey: .requireModifier) ?? d.requireModifier
         freezeCursor = try c.decodeIfPresent(Bool.self, forKey: .freezeCursor) ?? d.freezeCursor
@@ -134,4 +134,14 @@ final class Preferences {
         }
         appearance = UserDefaults.standard.string(forKey: Self.appearanceKey).flatMap(Appearance.init) ?? .system
     }
+}
+
+// Transitional: lets the menu's toggles keep their `$prefs.config.…` bindings while the engine
+// moves to the layout. Replaced by explicit layout bindings in MenuView.
+extension EngineConfig {
+    var swapSides: Bool { get { layout.sidesSwapped } set { layout.sidesSwapped = newValue } }
+    var quickMute: Bool { get { layout.quickMute } set { layout.quickMute = newValue } }
+    var mediaStrip: Bool { get { layout.mediaStrip } set { layout.mediaStrip = newValue } }
+    var mediaPlayPause: Bool { get { layout.mediaPlayPause } set { layout.mediaPlayPause = newValue } }
+    var reverseMediaSwipe: Bool { get { layout.reverseMediaSwipe } set { layout.reverseMediaSwipe = newValue } }
 }

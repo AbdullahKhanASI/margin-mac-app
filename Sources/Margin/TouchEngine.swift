@@ -10,12 +10,8 @@ struct Finger {
 
 extension Notification.Name {
     static let marginLevelsChanged = Notification.Name("MarginLevelsChanged")
-    /// Posted on the main thread after a gesture does something; `object` is a `CompletedGesture`.
+    /// Posted on the main thread after a gesture does something; `object` is a `(Zone, GestureKind)`.
     static let marginGestureCompleted = Notification.Name("MarginGestureCompleted")
-}
-
-enum CompletedGesture {
-    case volume, brightness, mute, skip, playPause
 }
 
 /// Called by MultitouchSupport on its own thread, once per trackpad frame.
@@ -36,16 +32,15 @@ func multitouchFrame(_ touches: UnsafePointer<MRTouch>?, _ count: Int32, _ times
     TouchEngine.shared.enqueue(fingers, timestamp: timestamp, device: deviceID, isMouse: isMouse != 0)
 }
 
-/// Turns raw finger positions into edge gestures:
-/// vertical slides on the left / right edges, swipes and double-taps on the bottom edge,
-/// and a double-tap in the top-right corner.
+/// Turns raw finger positions into edge gestures. `ZoneGeometry` says which zone a touch starts in;
+/// the config's `layout` says what that zone's slide and double-tap do.
 final class TouchEngine {
     static let shared = TouchEngine()
 
     private enum Phase {
         case pending   // landed in a zone, waiting to see what the finger does
-        case sliding   // adjusting volume / brightness
-        case swiping   // media strip swipe
+        case sliding   // following the finger with a `level` slide
+        case swiping   // a `flick`, which fires once
         case rejected  // ordinary pointer movement; leave it alone
     }
 
@@ -56,9 +51,12 @@ final class TouchEngine {
         var start: CGPoint
         var last: CGPoint
         var anchor: CGPoint
-        var role: LevelKind?
-        var isStrip: Bool
-        var isCorner: Bool
+        /// Bindings are resolved when the touch begins and kept until it lifts, so a layout
+        /// change never cuts off a gesture in progress.
+        var edge: Zone?           // where a slide goes
+        var slide: SlideAction
+        var tapZone: Zone?        // where a double-tap goes: the corner, or the edge under it
+        var tap: Command
         var isMouse: Bool
         var phase = Phase.pending
         var stepOrigin = 0.0
@@ -71,6 +69,9 @@ final class TouchEngine {
         var lostAt: Double?
 
         var isEngaged: Bool { phase == .sliding || phase == .swiping }
+
+        /// Position along the edge being slid: y on the side edges, x on the bottom.
+        func along(_ p: CGPoint) -> Double { edge?.slidesVertically == false ? p.x : p.y }
     }
 
     // Tuning, in normalized trackpad units (0–1).
@@ -85,8 +86,6 @@ final class TouchEngine {
         static let fullRange = 0.7           // travel that sweeps 0–100% at sensitivity 1.0
         static let baseStep = 0.045          // one key step, when falling back to media keys
         static let fineSlowdown = 3.0        // precise sliding moves the level this much slower
-        static let cornerSize = 0.15
-        static let mouseEdgeWidth = 0.22     // the Magic Mouse surface is narrow; its edges need more room
         static let dropoutGrace = 0.12       // seconds a slide survives the trackpad losing the finger
         static let dropoutReach = 0.1        // how far a re-found finger may be from where it was lost
         static let hapticInterval = 0.025
@@ -97,8 +96,7 @@ final class TouchEngine {
     private var gesture: Gesture?
     private var ignoredFinger: Int32?
     private var blockedUntilLift = false
-    private var lastCornerTap = -1.0
-    private var lastStripTap = -1.0
+    private var lastTap: [Zone: Double] = [:]   // per zone, so a tap in one zone never pairs with another
     private var lastHaptic = 0.0
     private var dropoutToken = 0
 
@@ -161,7 +159,7 @@ final class TouchEngine {
             if g.fingerID != f.id {
                 if g.isEngaged, hypot(p.x - g.last.x, p.y - g.last.y) < Tuning.dropoutReach {
                     // Same finger, new identity: shift the origins so the value doesn't jump.
-                    g.stepOrigin += p.y - g.last.y
+                    g.stepOrigin += g.along(p) - g.along(g.last)
                     g.start.x += p.x - g.last.x
                     g.last = p
                     g.fingerID = f.id
@@ -192,26 +190,26 @@ final class TouchEngine {
         // A physical click is held: the user is dragging something.
         guard NSEvent.pressedMouseButtons == 0 else { return nil }
 
-        let w = isMouse ? max(c.edgeWidth, Tuning.mouseEdgeWidth) : c.edgeWidth
-        var role: LevelKind?
-        if p.x < w {
-            role = c.swapSides ? .volume : .brightness
-        } else if p.x > 1 - w {
-            role = c.swapSides ? .brightness : .volume
+        let hit = ZoneGeometry.lookup(x: p.x, y: p.y, edgeWidth: c.edgeWidth,
+                                      bottomQuarterOnly: c.bottomQuarterOnly, isMouse: isMouse)
+        var slide = SlideAction.none
+        if let edge = hit.edge, hit.edgeGestures.contains(.slide) {
+            slide = Self.runnable(c.layout.edge(edge).slide)
         }
-        if isMouse {
-            // Only the top half of the mouse, where a fingertip rests; the rest is where the hand grips.
-            if p.y < 0.5 { role = nil }
-            guard role != nil else { return nil }
-        } else if c.bottomQuarterOnly, p.y > 0.25 {
-            role = nil
+        // A corner bound to nothing lets its taps fall through to the edge under it.
+        var tapZone: Zone?
+        var tap = Command.none
+        if let corner = hit.corner, Self.runnable(c.layout.corner(corner)) != .none {
+            tapZone = corner
+            tap = c.layout.corner(corner)
+        } else if let edge = hit.edge, hit.edgeGestures.contains(.doubleTap),
+                  Self.runnable(c.layout.edge(edge).tap) != .none {
+            tapZone = edge
+            tap = c.layout.edge(edge).tap
         }
+        guard slide != .none || tap != .none else { return nil }
 
-        let isCorner = !isMouse && c.quickMute && p.x > 1 - Tuning.cornerSize && p.y > 1 - Tuning.cornerSize
-        let isStrip = !isMouse && c.mediaStrip && role == nil && p.y < min(w * 1.25, 0.12)
-        guard role != nil || isCorner || isStrip else { return nil }
-
-        InputGate.shared.setTapCandidate(isCorner || (isStrip && c.mediaPlayPause))
+        InputGate.shared.setTapCandidate(tap != .none)
         return Gesture(
             device: device,
             fingerID: f.id,
@@ -219,11 +217,39 @@ final class TouchEngine {
             start: p,
             last: p,
             anchor: CGEvent(source: nil)?.location ?? .zero,
-            role: role,
-            isStrip: isStrip,
-            isCorner: isCorner,
+            edge: slide == .none ? nil : hit.edge,
+            slide: slide,
+            tapZone: tapZone,
+            tap: tap,
             isMouse: isMouse
         )
+    }
+
+    /// Phase 1 runs only what v1.2 could do. Anything else in the layout (steppers, the timer,
+    /// input volume, system commands…) is treated as unbound until a later phase implements it,
+    /// so it never claims a touch or swallows a click.
+    private static func runnable(_ slide: SlideAction) -> SlideAction {
+        switch slide {
+        case .level(.outputVolume), .level(.brightness): slide
+        case .flick(let forward, let back):
+            runnable(forward) != .none || runnable(back) != .none ? slide : .none
+        case .none, .level(.inputVolume), .stepper, .timer: .none
+        }
+    }
+
+    private static func runnable(_ command: Command) -> Command {
+        switch command {
+        case .media, .toggleOutputMute: command
+        default: .none
+        }
+    }
+
+    private static func levelKind(_ slide: SlideAction) -> LevelKind? {
+        switch slide {
+        case .level(.outputVolume): .volume
+        case .level(.brightness): .brightness
+        default: nil
+        }
     }
 
     private func advance(_ g: inout Gesture, to p: CGPoint) {
@@ -233,14 +259,21 @@ final class TouchEngine {
         g.maxTravel = max(g.maxTravel, hypot(dx, dy))
         if g.maxTravel > Tuning.tapTravel { InputGate.shared.setTapCandidate(false) }
 
+        // Travel along the edge, and across it. The side edges must be 1.5× more along than
+        // across to engage, the bottom 2×, as in v1.2.
+        let vertical = g.edge?.slidesVertically ?? true
+        let along = vertical ? dy : dx
+        let across = vertical ? dx : dy
+        let ratio = vertical ? 1.5 : 2.0
+
         switch g.phase {
         case .pending:
-            if g.role != nil, abs(dy) > Tuning.slideStart, abs(dy) > 1.5 * abs(dx) {
+            if case .level = g.slide, abs(along) > Tuning.slideStart, abs(along) > ratio * abs(across) {
                 g.phase = .sliding
-                g.stepOrigin = p.y
+                g.stepOrigin = g.along(p)
                 readLevel(into: &g)
                 engage(g)
-            } else if g.isStrip, abs(dx) > Tuning.swipeStart, abs(dx) > 2 * abs(dy) {
+            } else if case .flick = g.slide, abs(along) > Tuning.swipeStart, abs(along) > ratio * abs(across) {
                 g.phase = .swiping
                 engage(g)
             } else if g.maxTravel > Tuning.rejectTravel {
@@ -251,12 +284,10 @@ final class TouchEngine {
             step(&g, to: p)
 
         case .swiping:
-            if !g.swipeFired, abs(dx) > Tuning.swipeFire {
+            if !g.swipeFired, case .flick(let forward, let back) = g.slide, let edge = g.edge,
+               abs(along) > Tuning.swipeFire {
                 g.swipeFired = true
-                let forward = (dx > 0) != config.reverseMediaSwipe
-                send(forward ? .next : .previous)
-                haptic(g.device, force: true)
-                announce(.skip)
+                perform(along > 0 ? forward : back, device: g.device, zone: edge, kind: .slide)
             }
 
         case .rejected:
@@ -265,7 +296,7 @@ final class TouchEngine {
     }
 
     private func readLevel(into g: inout Gesture) {
-        switch g.role {
+        switch Self.levelKind(g.slide) {
         case .volume:
             if let out = SystemControls.outputVolume() {
                 g.level = Double(out.volume)
@@ -283,7 +314,7 @@ final class TouchEngine {
     }
 
     private func step(_ g: inout Gesture, to p: CGPoint) {
-        guard let role = g.role else { return }
+        guard let role = Self.levelKind(g.slide) else { return }
         let fine = config.preciseSliding
             || (config.fineControl && NSEvent.modifierFlags.isSuperset(of: [.shift, .option]))
         guard let level = g.level else {
@@ -293,8 +324,8 @@ final class TouchEngine {
 
         // Continuous: the level tracks the finger, so the overlay moves smoothly.
         let rate = config.sensitivity / Tuning.fullRange / (fine ? Tuning.fineSlowdown : 1)
-        let newLevel = min(max(level + (p.y - g.stepOrigin) * rate, 0), 1)
-        g.stepOrigin = p.y
+        let newLevel = min(max(level + (g.along(p) - g.stepOrigin) * rate, 0), 1)
+        g.stepOrigin = g.along(p)
         guard newLevel != level else { return }
 
         let applied: Bool
@@ -335,7 +366,7 @@ final class TouchEngine {
         let up: MediaKey = role == .volume ? .soundUp : .brightnessUp
         let down: MediaKey = role == .volume ? .soundDown : .brightnessDown
 
-        var delta = p.y - g.stepOrigin
+        var delta = g.along(p) - g.stepOrigin
         var changed = false
         while delta >= size {
             send(up, fine: fine)
@@ -366,38 +397,41 @@ final class TouchEngine {
         if g.isEngaged {
             InputGate.shared.unfreeze()
             InputGate.shared.setScrollSuppressed(false)
-            if g.phase == .sliding, let role = g.role {
-                announce(role == .volume ? .volume : .brightness)
-            }
+            if g.phase == .sliding, let edge = g.edge { announce(edge, .slide) }
         }
         guard !cancelled, g.phase == .pending,
               ts - g.startTime < Tuning.tapDuration,
-              g.maxTravel < Tuning.tapTravel
+              g.maxTravel < Tuning.tapTravel,
+              let zone = g.tapZone, g.tap != .none
         else { return }
 
-        if g.isCorner {
-            if lastCornerTap > 0, ts - lastCornerTap < Tuning.doubleTapWindow {
-                lastCornerTap = -1
-                if let out = SystemControls.outputVolume(), SystemControls.setMuted(!out.muted) {
-                    showOverlay(.volume, Double(out.volume), muted: !out.muted)
-                } else {
-                    send(.mute)
-                }
-                announce(.mute)
-                if config.haptics { SystemControls.buzz(device: g.device) }
-            } else {
-                lastCornerTap = ts
-            }
-        } else if g.isStrip, config.mediaPlayPause {
-            if lastStripTap > 0, ts - lastStripTap < Tuning.doubleTapWindow {
-                lastStripTap = -1
-                send(.play)
-                announce(.playPause)
-                haptic(g.device, force: true)
-            } else {
-                lastStripTap = ts
-            }
+        if let last = lastTap[zone], ts - last < Tuning.doubleTapWindow {
+            lastTap[zone] = nil
+            perform(g.tap, device: g.device, zone: zone, kind: .doubleTap)
+        } else {
+            lastTap[zone] = ts
         }
+    }
+
+    /// Runs a tap or flick command, with its haptic, and reports the gesture.
+    private func perform(_ command: Command, device: UInt64, zone: Zone, kind: GestureKind) {
+        switch command {
+        case .media(let key):
+            send(key)
+            haptic(device, force: true)
+        case .toggleOutputMute:
+            if let out = SystemControls.outputVolume(), SystemControls.setMuted(!out.muted) {
+                showOverlay(.volume, Double(out.volume), muted: !out.muted)
+            } else {
+                send(.mute)
+            }
+            // A heavier buzz, so mute can be felt without looking.
+            if config.haptics { SystemControls.buzz(device: device) }
+        default:
+            // Not reachable in phase 1: `begin` only binds runnable commands.
+            return
+        }
+        announce(zone, kind)
     }
 
     private func cancel() {
@@ -425,9 +459,9 @@ final class TouchEngine {
         }
     }
 
-    private func announce(_ gesture: CompletedGesture) {
+    private func announce(_ zone: Zone, _ kind: GestureKind) {
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .marginGestureCompleted, object: gesture)
+            NotificationCenter.default.post(name: .marginGestureCompleted, object: (zone, kind))
         }
     }
 
