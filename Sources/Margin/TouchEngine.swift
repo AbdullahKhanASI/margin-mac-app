@@ -37,7 +37,8 @@ func multitouchFrame(_ touches: UnsafePointer<MRTouch>?, _ count: Int32, _ times
 }
 
 /// Turns raw finger positions into edge gestures. `ZoneGeometry` says which zone a touch starts in;
-/// the config's `layout` says what that zone's slide and double-tap do.
+/// the layout says what that zone's slide and double-tap do: `trackpadLayout` on a trackpad, the
+/// config's global `layout` on a Magic Mouse, which app profiles never change (decision 3).
 final class TouchEngine {
     static let shared = TouchEngine()
 
@@ -99,6 +100,8 @@ final class TouchEngine {
 
     private let queue = DispatchQueue(label: "margin.touch-engine", qos: .userInteractive)
     private var config = EngineConfig()
+    /// The global layout with the frontmost app's profile on top, worked out on the main thread.
+    private var trackpadLayout = MarginCore.Layout.default
     private var gesture: Gesture?
     private var ignoredFinger: Int32?
     private var blockedUntilLift = false
@@ -106,9 +109,12 @@ final class TouchEngine {
     private var lastHaptic = 0.0
     private var dropoutToken = 0
 
-    func update(_ newConfig: EngineConfig) {
+    /// Both values are copies, so nothing on this queue reads shared state. A gesture already
+    /// running keeps the bindings it resolved in `begin`, so a switch never cuts it off.
+    func update(_ newConfig: EngineConfig, trackpadLayout: MarginCore.Layout) {
         queue.async {
             self.config = newConfig
+            self.trackpadLayout = trackpadLayout
             if !newConfig.enabled { self.cancel() }
         }
     }
@@ -199,15 +205,16 @@ final class TouchEngine {
         // A physical click is held: the user is dragging something.
         guard NSEvent.pressedMouseButtons == 0 else { return nil }
 
+        let layout = isMouse ? c.layout : trackpadLayout
         let hit = ZoneGeometry.lookup(x: p.x, y: p.y, edgeWidth: c.edgeWidth,
                                       bottomQuarterOnly: c.bottomQuarterOnly, isMouse: isMouse)
         var slide = SlideAction.none
         if let edge = hit.edge, hit.edgeGestures.contains(.slide) {
-            slide = Self.runnable(c.layout.edge(edge).slide)
+            slide = Self.runnable(layout.edge(edge).slide)
         }
         // A corner bound to nothing lets its taps fall through to the edge under it.
-        let tapZone = hit.tapZone { Self.runnable(c.layout.tap($0)) != .none }
-        let tap = tapZone.map { c.layout.tap($0) } ?? .none
+        let tapZone = hit.tapZone { Self.runnable(layout.tap($0)) != .none }
+        let tap = tapZone.map { layout.tap($0) } ?? .none
         guard slide != .none || tap != .none else { return nil }
 
         InputGate.shared.setTapCandidate(tap != .none)

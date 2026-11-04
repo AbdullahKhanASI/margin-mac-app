@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MarginCore
 import Observation
@@ -60,7 +61,8 @@ struct EngineConfig: Codable, Equatable {
     /// reverseMediaSwipe booleans, which are read once for migration and never written again.
     /// Qualified because SwiftUI also has a `Layout`.
     var layout = MarginCore.Layout.default
-    /// Per-app overrides. Saved now so the format is stable; nothing applies them until phase 4.
+    /// Per-app overrides for trackpads. `Preferences` applies the frontmost app's on the main
+    /// thread; the engine is handed the result.
     var profiles: [AppProfile] = []
     var bottomQuarterOnly = false
     var requireModifier = false
@@ -117,7 +119,8 @@ final class Preferences {
             if let data = try? JSONEncoder().encode(config) {
                 UserDefaults.standard.set(data, forKey: Self.configKey)
             }
-            TouchEngine.shared.update(config)
+            // Any settings change goes to the engine, as before profiles existed.
+            pushToEngine()
             NotificationCenter.default.post(name: .marginConfigChanged, object: oldValue)
         }
     }
@@ -125,6 +128,12 @@ final class Preferences {
     var appearance: Appearance {
         didSet { UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey) }
     }
+
+    /// Follows the frontmost app. Observed, so the status line and the profile list update.
+    private(set) var tracker: ProfileTracker
+
+    /// The profile in charge of the trackpads right now, for the status line.
+    var activeProfile: AppProfile? { tracker.activeProfile(in: config.profiles) }
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: Self.configKey),
@@ -134,5 +143,54 @@ final class Preferences {
             config = EngineConfig()
         }
         appearance = UserDefaults.standard.string(forKey: Self.appearanceKey).flatMap(Appearance.init) ?? .system
+        tracker = ProfileTracker(ownBundleID: Bundle.main.bundleIdentifier,
+                                  frontmostBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.appActivated(app)
+        }
+    }
+
+    /// Hands the engine the settings with the trackpad layout for the frontmost app.
+    func pushToEngine() {
+        let layout = tracker.effective(global: config.layout, profiles: config.profiles)
+        tracker.didApply(layout)
+        TouchEngine.shared.update(config, trackpadLayout: layout)
+    }
+
+    private func appActivated(_ app: NSRunningApplication?) {
+        guard let app, tracker.activate(app.bundleIdentifier) else { return }
+        if let bundleID = app.bundleIdentifier, let name = app.localizedName {
+            // Goes through `config`, so it's saved and the engine updated if the name changed.
+            config.profiles.refreshName(bundleID: bundleID, name: name)
+        }
+        // Most switches are between apps with no profile; those leave the engine alone.
+        if let layout = tracker.layoutToApply(global: config.layout, profiles: config.profiles) {
+            TouchEngine.shared.update(config, trackpadLayout: layout)
+        }
+    }
+
+    // MARK: Editing profiles
+
+    func addProfile(for app: NSRunningApplication) {
+        guard let bundleID = app.bundleIdentifier else { return }
+        config.profiles.addProfile(bundleID: bundleID, name: app.localizedName ?? bundleID)
+    }
+
+    func removeProfile(_ bundleID: String) {
+        config.profiles.removeProfile(bundleID: bundleID)
+    }
+
+    func profile(_ bundleID: String) -> AppProfile? {
+        config.profiles.first { $0.bundleID == bundleID }
+    }
+
+    /// Changes one profile in place; does nothing if it was removed meanwhile.
+    func editProfile(_ bundleID: String, _ edit: (inout AppProfile) -> Void) {
+        guard let i = config.profiles.firstIndex(where: { $0.bundleID == bundleID }) else { return }
+        edit(&config.profiles[i])
     }
 }

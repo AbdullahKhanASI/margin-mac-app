@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         mr_allow_background_cursor_control()
         MenuPanel.shared.install()
-        TouchEngine.shared.update(Preferences.shared.config)
+        Preferences.shared.pushToEngine()
         startDevices()
 
         let state = AppState.shared
