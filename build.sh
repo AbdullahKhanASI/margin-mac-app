@@ -2,7 +2,7 @@
 # Builds Margin.app into ./build.
 #   ./build.sh           build and sign
 #   ./build.sh install   also copy to /Applications and launch it
-#   ./build.sh release   also zip it as build/Margin-v<version>.zip for a GitHub release
+#   ./build.sh release   also zip it as build/Margin-v<version><$MARGIN_VERSION_SUFFIX>.zip (CI does this on a tag)
 #
 # Signing uses $MARGIN_SIGN_IDENTITY, else the first "Apple Development" identity, else ad-hoc.
 # A stable identity matters: macOS ties the Accessibility grant to the signature, so ad-hoc
@@ -25,7 +25,10 @@ IDENTITY="${MARGIN_SIGN_IDENTITY:-}"
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development[^"]*\)".*/\1/p' | head -1)"
 fi
-codesign --force --options runtime --sign "${IDENTITY:--}" "$APP"
+SIGN_FLAGS=(--force --options runtime)
+# Notarization needs a secure timestamp, which only a Developer ID signature gets.
+[[ "$IDENTITY" == "Developer ID Application"* ]] && SIGN_FLAGS+=(--timestamp)
+codesign "${SIGN_FLAGS[@]}" --sign "${IDENTITY:--}" "$APP"
 echo "Signed with: ${IDENTITY:-ad-hoc}"
 echo "Built $APP"
 
