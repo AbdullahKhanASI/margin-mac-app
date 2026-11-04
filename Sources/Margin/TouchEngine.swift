@@ -1,5 +1,6 @@
 import AppKit
 import CMultitouch
+import MarginCore
 
 struct Finger {
     let id: Int32
