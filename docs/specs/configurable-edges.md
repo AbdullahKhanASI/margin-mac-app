@@ -426,7 +426,7 @@ start fires, the buzz when either mute toggles, and the alarm pattern.
 - **Settings → App Profiles.** A section listing profiles, each with its app icon, name and an on/off switch.
   - The **+** button lists running apps that have a normal activation policy.
   - Clicking a profile shows the diagram in profile mode: changed zones are tinted and the rest are faded.
-  - **Reset Layout** in the Edges section restores the default layout.
+- **Settings → Edges.** **Reset Layout** restores the default layout.
 - **Settings → Timer.** The sound, notification and Shortcut options above.
 - **Status line.** When a profile is active, the main page shows "Using <App> profile" under the header, so a changed
   binding never comes as a surprise.
@@ -470,7 +470,9 @@ runs a 10-second timer to try out the alarm.
 2. **New zones, hot corners and the simple actions.** Top edge, all four corners, the physical-click guard,
    right-click corner detection, `inputVolume` and `toggleInputMute`, the `undoRedo` and `tabs` steppers, the system
    commands and `keystroke`.
-3. **Zone editor UI.** The interactive diagram, the editor page and the keystroke recorder.
+3. **Zone editor UI.** The interactive diagram, the editor page and the keystroke recorder. Also `launchApp` with its
+   app chooser, and the `spaces` and `arrowKeys` steppers (decision 10). The old toggles go, so **Reset Layout** in
+   Settings → Edges comes here too, rather than with app profiles.
 4. **App profiles.** Tracking the frontmost app, merging, the Settings section and the status line.
 5. **Timer dial.** `TimerService`, the dial slide action and the timer commands, the countdown in the menu bar, the
    alarm with its three intensities, and the timer settings.
@@ -493,6 +495,9 @@ Settled on 2026-11-04.
 | 5 | Should window snapping need a modifier? | Yes, always. An inward swipe only counts while ⌥ is held. |
 | 6 | Native tiling on macOS 15+, or AX? | AX on every version, for exact Restore and Next Display and the same behaviour on 14–16. |
 | 7 | What alarm pattern? | User-adjustable: Gentle, Normal (default) or Insistent, with a Try button. |
+| 8 | Which actions does the zone editor list? | Only those this build can run: `Actions.canRun` for commands, and a matching check for slide actions. Later phases widen those checks, and the pickers grow on their own. Nothing is shown disabled or as "coming soon". |
+| 9 | How is a flick edited? | Choosing Flick shows a Forward and a Back command picker, defaulting to Next and Previous, and a swap button that replaces Reverse Swipe. Any runnable command can go on a flick. |
+| 10 | Where do `launchApp` and the `spaces` and `arrowKeys` steppers land? | They belonged to no phase; they join phase 3. |
 
 ## Open questions
 
