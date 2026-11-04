@@ -2,10 +2,10 @@ import MarginCore
 import XCTest
 
 final class ActionCatalogTests: XCTestCase {
-    /// What this build runs, as `Actions.canRun` has it in phase 3.
+    /// What this build runs, as `Actions.canRun` has it in phase 5.
     private func canRun(_ command: Command) -> Bool {
         switch command {
-        case .none, .window, .timerStart, .timerPauseResume, .timerCancel: false
+        case .none, .window: false
         case .launchApp(let id): !id.isEmpty
         default: true
         }
@@ -13,7 +13,7 @@ final class ActionCatalogTests: XCTestCase {
 
     private func canRun(_ slide: SlideAction) -> Bool {
         switch slide {
-        case .none, .timer: false
+        case .none: false
         case .flick(let forward, let back): canRun(forward) || canRun(back)
         default: true
         }
@@ -31,12 +31,11 @@ final class ActionCatalogTests: XCTestCase {
     func testEdgeSlidesAreGroupedAndFiltered() {
         for zone in Zone.edges {
             let groups = ActionCatalog.slideGroups(for: zone, canRun: canRun)
-            // The timer can't run yet, so its group is left out rather than shown disabled.
-            XCTAssertEqual(titles(groups), ["Levels", "Dials", "Flick"])
+            XCTAssertEqual(titles(groups), ["Levels", "Dials", "Flick", "Timer"])
             XCTAssertEqual(choices(groups), [
                 .level(.outputVolume), .level(.inputVolume), .level(.brightness),
                 .stepper(.undoRedo), .stepper(.tabs), .stepper(.spaces), .stepper(.arrowKeys),
-                .flick,
+                .flick, .timer,
             ])
         }
     }
@@ -51,14 +50,14 @@ final class ActionCatalogTests: XCTestCase {
 
     func testEdgeTapsStartWithMedia() {
         let groups = ActionCatalog.tapGroups(for: .bottomEdge, canRun: canRun)
-        XCTAssertEqual(titles(groups), ["Media", "Sound", "System", "Apps", "Keystroke"])
+        XCTAssertEqual(titles(groups), ["Media", "Sound", "System", "Timer", "Apps", "Keystroke"])
         XCTAssertEqual(groups.first?.options.first?.choice, .command(.media(.play)))
         XCTAssertFalse(choices(groups).contains(.command(.none)), "None sits above the groups")
     }
 
     func testCornersStartWithSystemCommands() {
         let groups = ActionCatalog.tapGroups(for: .bottomLeft, canRun: canRun)
-        XCTAssertEqual(titles(groups), ["System", "Media", "Sound", "Apps", "Keystroke"])
+        XCTAssertEqual(titles(groups), ["System", "Timer", "Media", "Sound", "Apps", "Keystroke"])
         XCTAssertEqual(groups[0].options.map(\.label), [
             "Lock Screen", "Screenshot", "Mission Control", "App Windows", "Show Desktop", "Screen Saver",
             "Sleep Display",

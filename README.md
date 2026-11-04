@@ -103,7 +103,8 @@ To cut a release, run `MARGIN_VERSION_SUFFIX=.0-beta ./build.sh release` (the ve
 newest release automatically.
 
 `Margin --preview-menu` opens the menu's contents in a regular window, and `Margin --preview-overlay` sweeps the overlay
-up and down without changing the real levels. Both are handy when working on the UI.
+up and down without changing the real levels. Both are handy when working on the UI. `Margin --preview-timer` starts a
+10-second timer, to try the alarm.
 
 The app icon artwork is `Resources/AppIcon-source.png`. `Scripts/make-icon.swift` cuts it out onto
 transparency and writes `Resources/AppIcon.icns`; rerun it after changing the artwork.

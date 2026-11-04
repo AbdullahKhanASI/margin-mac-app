@@ -4,9 +4,10 @@ import MarginCore
 /// Carries out commands: media keys, mute, system commands and keystrokes. The engine keeps the
 /// haptics and the gesture report, because it knows which trackpad was touched.
 enum Actions {
-    /// Runs `command` on the main queue. Safe to call from any thread.
-    static func fire(_ command: Command) {
-        DispatchQueue.main.async { run(command) }
+    /// Runs `command` on the main queue. Safe to call from any thread. `device` is the trackpad
+    /// that was touched, if any; a timer started there plays its alarm there.
+    static func fire(_ command: Command, device: UInt64? = nil) {
+        DispatchQueue.main.async { run(command, device: device) }
     }
 
     /// Whether this build can carry out `command`. The engine treats the rest as unbound, so
@@ -15,12 +16,14 @@ enum Actions {
         switch command {
         case .media, .toggleOutputMute, .toggleInputMute,
              .lockScreen, .screenshotRegion, .missionControl, .appWindows, .showDesktop,
-             .startScreenSaver, .sleepDisplay, .keystroke:
+             .startScreenSaver, .sleepDisplay, .keystroke, .timerPauseResume, .timerCancel:
             true
         case .launchApp(let bundleID):
             !bundleID.isEmpty
-        // Window commands arrive in phase 6, the timer in phase 5.
-        case .none, .window, .timerStart, .timerPauseResume, .timerCancel:
+        case .timerStart(let minutes):
+            minutes > 0
+        // Window commands arrive in phase 6.
+        case .none, .window:
             false
         }
     }
@@ -28,15 +31,20 @@ enum Actions {
     /// The same for a slide. A flick counts if either of its commands can run.
     static func canRun(_ slide: SlideAction) -> Bool {
         switch slide {
-        case .level, .stepper: true
+        case .level, .stepper, .timer: true
         case .flick(let forward, let back): canRun(forward) || canRun(back)
-        // The timer dial arrives in phase 5.
-        case .none, .timer: false
+        case .none: false
         }
     }
 
-    private static func run(_ command: Command) {
+    private static func run(_ command: Command, device: UInt64?) {
         switch command {
+        case .timerStart(let minutes):
+            TimerService.shared.start(minutes: minutes, device: device)
+        case .timerPauseResume:
+            TimerService.shared.pauseResume()
+        case .timerCancel:
+            TimerService.shared.cancel()
         case .media(let key):
             SystemControls.press(key)
             NotificationCenter.default.post(name: .marginLevelsChanged, object: nil)
