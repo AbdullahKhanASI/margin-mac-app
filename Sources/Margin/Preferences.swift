@@ -65,7 +65,10 @@ struct EngineConfig: Codable, Equatable {
     /// thread; the engine is handed the result.
     var profiles: [AppProfile] = []
     var bottomQuarterOnly = false
-    var requireModifier = false
+    /// Off by default: edge gestures only start while fn or ⌥ is held, so an edge touch never
+    /// surprises anyone. v2.0's `requireModifier` (off by default) is not read, so every install
+    /// starts with the modifier required.
+    var useWithoutModifier = false
     var freezeCursor = true
     var preciseSliding = false
     var fineControl = true          // hold Shift-Option for finer changes
@@ -77,6 +80,11 @@ struct EngineConfig: Codable, Equatable {
     var edgeWidth = 0.08
     /// Settings → Timer. The engine only needs the alarm, and gets that from `setAlarm`.
     var timer = TimerSettings()
+
+    /// Whether a gesture may start with the given keys held.
+    func allowsGesture(with mods: NSEvent.ModifierFlags) -> Bool {
+        useWithoutModifier || mods.contains(.function) || mods.contains(.option)
+    }
 
     init() {}
 
@@ -93,7 +101,7 @@ struct EngineConfig: Codable, Equatable {
         // Like the layout, unreadable profiles are dropped rather than resetting everything.
         profiles = (try? c.decodeIfPresent([AppProfile].self, forKey: .profiles)) ?? d.profiles
         bottomQuarterOnly = try c.decodeIfPresent(Bool.self, forKey: .bottomQuarterOnly) ?? d.bottomQuarterOnly
-        requireModifier = try c.decodeIfPresent(Bool.self, forKey: .requireModifier) ?? d.requireModifier
+        useWithoutModifier = try c.decodeIfPresent(Bool.self, forKey: .useWithoutModifier) ?? d.useWithoutModifier
         freezeCursor = try c.decodeIfPresent(Bool.self, forKey: .freezeCursor) ?? d.freezeCursor
         preciseSliding = try c.decodeIfPresent(Bool.self, forKey: .preciseSliding) ?? d.preciseSliding
         fineControl = try c.decodeIfPresent(Bool.self, forKey: .fineControl) ?? d.fineControl

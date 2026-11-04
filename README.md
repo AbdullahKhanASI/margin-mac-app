@@ -23,7 +23,8 @@
 </p>
 
 Margin lives in your menu bar and listens to the outer few millimetres of your trackpad. The middle of the trackpad
-works exactly as before. Out of the box:
+works exactly as before. **Hold fn or ⌥ (Option)** while you touch an edge or corner to use it, so an ordinary
+touch near the edge never changes anything by accident. Out of the box:
 
 | Where | Gesture | What happens |
 |---|---|---|
@@ -33,7 +34,8 @@ works exactly as before. Out of the box:
 | Bottom edge | double-tap | Play or pause |
 | Top-right corner | double-tap | Mute |
 
-Every edge and corner can be changed to something else, and each app can have its own layout.
+Every edge and corner can be changed to something else, and each app can have its own layout. If you'd rather not hold
+a key, turn on **Settings → Use without Fn or Option key**.
 
 ## Contents
 
@@ -67,6 +69,8 @@ Every edge and corner can be changed to something else, and each app can have it
   corner if you use one.
 - **App profiles.** Give the trackpad different actions while a particular app is in front, such as tab switching on
   the bottom edge in Safari. A line in the menu shows which profile is active.
+- **No accidental triggers.** Gestures only work while you hold fn or ⌥, unless you turn on **Use without Fn or
+  Option key**.
 - **Haptic notches** as you slide, with adjustable strength and feel.
 - **The pointer stays put** while you slide, and taps on an edge don't turn into clicks.
 - **Fine control.** Hold ⇧⌥ for slower, more precise changes, or turn on Precise Sliding to always slide that way.
@@ -122,7 +126,7 @@ The setup guide opens the first time you run Margin:
 
 1. **Allow Accessibility access.** Click **Open Settings** and turn on **Margin** in
    **System Settings → Privacy & Security → Accessibility**. The step ticks itself off once access comes through.
-2. **Try each gesture.** Slide the right and left edges, double-tap the top-right corner, and swipe along the bottom
+2. **Try each gesture.** Hold fn or ⌥ (Option), then slide the right and left edges, double-tap the top-right corner, and swipe along the bottom
    edge. Each step ticks off as Margin recognises it, and you'll feel a buzz.
 3. **Open at login.** Click **Turn On** so Margin starts with your Mac.
 
@@ -148,6 +152,9 @@ Click the Margin icon in the menu bar to open its panel.
 <br clear="right">
 
 ### Gestures
+
+By default, **hold fn or ⌥ (Option)** as your finger touches the edge or corner; you can let go once a slide has
+started. To use gestures without a key, turn on **Settings → Use without Fn or Option key**.
 
 - **Slide:** put one finger down on an edge and slide along it. A slide that starts in the middle of the trackpad is an
   ordinary pointer movement.
@@ -223,7 +230,8 @@ Open the menu and click **Settings**.
 
 **Edges**
 - **Bottom Quarter Only:** ignore edge touches above the lower quarter of the trackpad.
-- **Require fn or ⌥:** only slide while holding a modifier, for when edges get in the way.
+- **Use without Fn or Option key:** off by default, so edges and corners only respond while you hold fn or ⌥. Turn it
+  on to use them with no key held.
 - **Reset Layout:** put every zone back to the default.
 
 **App Profiles:** see [App profiles](#app-profiles).
@@ -258,7 +266,11 @@ tccutil reset Accessibility com.abdullahkhan.Margin
 ```
 
 **Edge taps click things, or edges trigger when I don't mean them to.**
-Lower **Edge Width** in the menu, turn on **Bottom Quarter Only**, or turn on **Require fn or ⌥**.
+Turn off **Use without Fn or Option key** (it's off by default), so gestures need fn or ⌥ held. You can also lower
+**Edge Width** in the menu or turn on **Bottom Quarter Only**.
+
+**Nothing happens when I slide an edge.**
+Hold fn or ⌥ as you touch the edge, or turn on **Settings → Use without Fn or Option key**.
 
 **Slides feel too fast or too slow.**
 Change **Sensitivity**, hold ⇧⌥ while sliding, or turn on **Precise Sliding**.
