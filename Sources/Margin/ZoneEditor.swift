@@ -218,6 +218,9 @@ struct CommandPicker: View {
         if case .launchApp(let bundleID) = command, !recordingNew, !isInherited {
             AppRow(bundleID: bundleID) { chooseApp() }
         }
+        if case .timerStart(let minutes) = command, !recordingNew, !isInherited {
+            TimerMinutesRow(minutes: Binding(get: { minutes }, set: { command = .timerStart(minutes: $0) }))
+        }
         if recordingNew || (CommandChoice(command) == .keystroke && !isInherited) {
             ShortcutRecorderRow(
                 combo: recordingNew ? nil : command.shortcut,
@@ -254,7 +257,7 @@ struct CommandPicker: View {
         case .command(let new): command = new
         case .launchApp: chooseApp()
         case .keystroke: recordingNew = true
-        // Phase 5 adds the minutes stepper; until then canRun keeps this out of the list.
+        // A 25-minute focus block to start with; the minutes row below changes it.
         case .timerStart: command = .timerStart(minutes: 25)
         }
     }
