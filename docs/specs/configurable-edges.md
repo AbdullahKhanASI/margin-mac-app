@@ -233,7 +233,7 @@ already rules out accidents, the shape rules below only need to tell a swipe fro
 
 ⌥ is checked when the swipe would fire rather than when the touch begins. That way, pressing ⌥ a moment late still
 works. It doesn't clash with Fine Control (⇧⌥): Fine Control only affects slides along an edge, and an inward swipe
-moves across it. When the global **Require fn or ⌥** setting is on, ⌥ meets both requirements.
+moves across it. Since 2.0.1, gestures need fn or ⌥ held unless **Use without Fn or Option key** is on; ⌥ meets both requirements.
 
 The pointer is **not** frozen while the engine is unsure, because most touches here are ordinary pointing. Once the
 swipe fires, the engine warps the pointer back to the `anchor` recorded when the touch began, so the pointer seems not

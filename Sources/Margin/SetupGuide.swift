@@ -51,12 +51,20 @@ private struct SetupGuideView: View {
         return "Lets Margin hold the pointer still and change levels."
     }
 
+    private var tryHint: String {
+        if prefs.config.useWithoutModifier {
+            return "Try each one below. Steps tick off as you do them."
+        }
+        return "Hold fn or ⌥ (Option) while you try each one below. Steps tick off as you do them. "
+            + "To use them without a key, turn on Settings → Use without Fn or Option key."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Your trackpad edges are now controls.")
                     .font(.title2.weight(.semibold))
-                Text("Try each one below. Steps tick off as you do them.")
+                Text(tryHint)
                     .foregroundStyle(.secondary)
             }
 

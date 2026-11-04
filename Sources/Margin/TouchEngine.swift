@@ -260,10 +260,8 @@ final class TouchEngine {
     private func begin(_ f: Finger, _ p: CGPoint, _ ts: Double, _ uptime: Double, _ device: UInt64,
                        _ isMouse: Bool) -> Gesture? {
         let c = config
-        if c.requireModifier {
-            let mods = NSEvent.modifierFlags
-            guard mods.contains(.function) || mods.contains(.option) else { return nil }
-        }
+        // Unless "Use without Fn or Option key" is on, a gesture only starts while fn or ⌥ is held.
+        guard c.allowsGesture(with: NSEvent.modifierFlags) else { return nil }
         // A physical click is held: the user is dragging something.
         guard NSEvent.pressedMouseButtons == 0 else { return nil }
 

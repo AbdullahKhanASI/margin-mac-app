@@ -111,6 +111,12 @@ struct MenuView: View {
 
         TrackpadDiagram(layout: prefs.config.layout, levels: LiveLevels(state)) { page = .zone($0) }
             .opacity(prefs.config.enabled ? 1 : 0.45)
+        if !prefs.config.useWithoutModifier {
+            Label("Hold fn or ⌥ while you use an edge or corner", systemImage: "keyboard")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
 
         if timer.state != .idle { TimerRow(timer: timer) }
 
@@ -163,8 +169,8 @@ private struct SettingsPage: View {
         PanelSection("Edges") {
             SwitchRow("Bottom Quarter Only", detail: "Ignore touches above the lower 25%",
                       isOn: $prefs.config.bottomQuarterOnly)
-            SwitchRow("Require fn or ⌥", detail: "Only slide while holding a modifier",
-                      isOn: $prefs.config.requireModifier)
+            SwitchRow("Use without Fn or Option key", detail: "Off: hold fn or ⌥ to use any edge or corner",
+                      isOn: $prefs.config.useWithoutModifier)
             ResetLayoutRow(layout: $prefs.config.layout)
         }
 
