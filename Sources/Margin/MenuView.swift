@@ -9,12 +9,13 @@ extension Notification.Name {
     static let marginPanelClosed = Notification.Name("MarginPanelClosed")
 }
 
-/// The menu's pages. Settings and the zone editor drill in from the main page, so there are no
-/// popovers inside the panel.
+/// The menu's pages. Settings and the zone editor drill in from the main page, and a profile
+/// from Settings, so there are no popovers inside the panel.
 enum MenuPage: Equatable {
     case main
     case settings
-    case zone(Zone)
+    case profile(String)                    // by bundle ID
+    case zone(Zone, profile: String? = nil) // nil edits the global layout
 }
 
 struct MenuView: View {
@@ -30,8 +31,15 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 12) {
             switch page {
             case .main: mainPage
-            case .settings: SettingsPage(prefs: prefs, state: state) { page = .main }
-            case .zone(let zone): ZoneEditorPage(prefs: prefs, zone: zone) { page = .main }
+            case .settings:
+                SettingsPage(prefs: prefs, state: state, openProfile: { page = .profile($0) }) { page = .main }
+            case .profile(let bundleID):
+                ProfilePage(prefs: prefs, bundleID: bundleID, levels: LiveLevels(state),
+                            editZone: { page = .zone($0, profile: bundleID) }) { page = .settings }
+            case .zone(let zone, let profile):
+                ZoneEditorPage(prefs: prefs, zone: zone, profileID: profile) {
+                    page = profile.map { .profile($0) } ?? .main
+                }
             }
         }
         .padding(14)
@@ -75,6 +83,10 @@ struct MenuView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
+        }
+        // So a changed binding never comes as a surprise.
+        if let profile = prefs.activeProfile {
+            ProfileStatusLine(profile: profile) { page = .profile(profile.bundleID) }
         }
 
         if !state.accessibilityTrusted && state.accessibilityLikelyStale {
@@ -139,6 +151,7 @@ struct MenuView: View {
 private struct SettingsPage: View {
     @Bindable var prefs: Preferences
     @Bindable var state: AppState
+    let openProfile: (String) -> Void
     let back: () -> Void
 
     var body: some View {
@@ -151,6 +164,8 @@ private struct SettingsPage: View {
                       isOn: $prefs.config.requireModifier)
             ResetLayoutRow(layout: $prefs.config.layout)
         }
+
+        AppProfilesSection(prefs: prefs, open: openProfile)
 
         PanelSection("While Sliding") {
             SwitchRow("Freeze Cursor", detail: "The pointer stays hidden and still", isOn: $prefs.config.freezeCursor)

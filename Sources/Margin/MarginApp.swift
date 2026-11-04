@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         mr_allow_background_cursor_control()
         MenuPanel.shared.install()
-        TouchEngine.shared.update(Preferences.shared.config)
+        Preferences.shared.pushToEngine()
         startDevices()
 
         let state = AppState.shared
@@ -68,8 +68,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let args = CommandLine.arguments
         var page = MenuPage.main
         if args.contains("--settings") { page = .settings }
+        // `--profile <bundleID>` opens that profile, or its zone with `--zone` too.
+        var profile: String?
+        if let i = args.firstIndex(of: "--profile"), i + 1 < args.count {
+            profile = args[i + 1]
+            page = .profile(args[i + 1])
+        }
         if let i = args.firstIndex(of: "--zone"), i + 1 < args.count, let zone = Zone(rawValue: args[i + 1]) {
-            page = .zone(zone)
+            page = .zone(zone, profile: profile)
         }
         let window = NSWindow(contentViewController: NSHostingController(rootView: MenuView(page: page)))
         window.title = "Margin Menu Preview"
