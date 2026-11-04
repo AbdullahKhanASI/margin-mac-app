@@ -261,7 +261,7 @@ tested with recorded touch paths.
 | `screenshotRegion` | the ⇧⌘4 keystroke |
 | `missionControl` | `NSWorkspace.open` on `/System/Applications/Mission Control.app` |
 | `appWindows` | the ⌃↓ keystroke |
-| `showDesktop` | the Show Desktop keystroke if one is set in Keyboard Shortcuts, otherwise the macOS default, F11 (⌘F3 does nothing when posted). It ships only if this works on macOS 14–16 without the user setting anything up; otherwise it is dropped from v1, and users can bind a keystroke themselves. |
+| `showDesktop` | the Show Desktop keystroke if one is set in Keyboard Shortcuts, otherwise the macOS default, F11 (⌘F3 does nothing when posted). It ships on every supported version; it was tested on macOS 27 only. |
 | `startScreenSaver` | `NSWorkspace.open` on `ScreenSaverEngine.app` |
 | `sleepDisplay` | `/usr/bin/pmset displaysleepnow` |
 | `timer*` | `TimerService` (see [Timer dial](#timer-dial)) |
@@ -489,7 +489,7 @@ Settled on 2026-11-04.
 | # | Question | Decision |
 |---|---|---|
 | 1 | Double-tap on the left and right edges? | Allowed. The editor warns "May interfere with clicking near the sides". |
-| 2 | How to trigger Show Desktop? | Ship it only if the keystroke works on macOS 14–16 without setup. Otherwise drop it from v1. |
+| 2 | How to trigger Show Desktop? | The user's Show Desktop shortcut, or F11 by default. It ships on every supported version without a separate check on macOS 14–16 (changed 2026-11-04; it was tested on macOS 27). |
 | 3 | Should profiles apply to the Magic Mouse? | No. Profiles apply to trackpads only. |
 | 4 | How are profiles matched? | By bundle ID only. |
 | 5 | Should window snapping need a modifier? | Yes, always. An inward swipe only counts while ⌥ is held. |

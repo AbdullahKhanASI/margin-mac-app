@@ -65,7 +65,6 @@ enum Actions {
         case .launchApp(let bundleID):
             launch(bundleID)
         case .showDesktop:
-            // Unverified on macOS 14–16; see `ShowDesktopShortcut`.
             post(ShowDesktopShortcut.resolve(symbolicHotKeys: symbolicHotKeys()))
         default:
             if let shortcut = command.shortcut { post(shortcut) }

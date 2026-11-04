@@ -54,7 +54,7 @@ extension Command {
 ///
 /// ⌘F3 (the spec's fallback) does nothing when posted: the Mission Control key on Apple keyboards
 /// isn't the F3 key code. F11 with the fn bit, as macOS records it, works.
-/// Verified on macOS 27 only; the spec asks for 14–16 too.
+/// Tested on macOS 27. It ships on every supported version without a separate check on 14–16 (spec decision 2).
 public enum ShowDesktopShortcut {
     public static let hotKeyID = "36"
     public static let fallback = KeyCombo(keyCode: KeyCombo.Key.f11, modifiers: KeyCombo.Modifier.function)
