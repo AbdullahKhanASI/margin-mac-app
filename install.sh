@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs (or updates) Margin from GitHub Releases.
 #
-#   curl -fsSL https://raw.githubusercontent.com/AbdullahKhanASI/margin-mac-app/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/abdullahabwisk/margin-mac-app/main/install.sh | bash
 #
 # Options (pass after `bash -s --` when piping, e.g. `| bash -s -- --uninstall`):
 #   --version <tag>   install a specific release instead of the newest one (betas included)
@@ -12,7 +12,7 @@
 # the GitHub CLI (`gh`), which works for anyone who has been invited to the repo.
 set -euo pipefail
 
-REPO="AbdullahKhanASI/margin-mac-app"
+REPO="abdullahabwisk/margin-mac-app"
 APP_NAME="Margin.app"
 BUNDLE_ID="com.abdullahkhan.Margin"
 VERSION=""
@@ -20,7 +20,7 @@ UNINSTALL=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version) VERSION="${2:?--version needs a tag, e.g. v1.1.0-beta}"; shift 2 ;;
+        --version) VERSION="${2:?--version needs a tag, e.g. v2.0.0}"; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         -h|--help) echo "Usage: install.sh [--version <tag>] [--uninstall]"; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;

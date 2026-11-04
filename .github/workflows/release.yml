@@ -1,0 +1,107 @@
+name: Release
+
+# Pushing a tag such as v2.0.0 builds Margin.app and publishes it as a GitHub release.
+# The tag must match CFBundleShortVersionString in Resources/Info.plist; anything after a dash
+# (v2.1.0-beta) is kept in the zip name and marks the release as a pre-release.
+#
+# Signing and notarization are optional and switch on when these repository secrets exist
+# (see docs/RELEASING.md):
+#   MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD   Developer ID Application certificate (.p12, base64)
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD     notarization
+# Without them the app is signed ad-hoc, as before.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and publish, e.g. v2.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag against Info.plist
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
+          NAME="${TAG#v}"
+          if [[ "${NAME%%-*}" != "$VERSION" ]]; then
+            echo "::error::Tag $TAG doesn't match Info.plist version $VERSION"
+            exit 1
+          fi
+          SUFFIX="${NAME#"$VERSION"}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "MARGIN_VERSION_SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
+          echo "ZIP=build/Margin-v$VERSION$SUFFIX.zip" >> "$GITHUB_ENV"
+          if [[ -n "$SUFFIX" ]]; then echo "PRERELEASE=--prerelease" >> "$GITHUB_ENV"; fi
+
+      - name: Unit tests
+        run: swift test
+
+      - name: Import the Developer ID certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -n 's/.*"\(Developer ID Application[^"]*\)".*/\1/p' | head -1)"
+          [[ -n "$IDENTITY" ]] || { echo "::error::No Developer ID Application identity in the certificate"; exit 1; }
+          echo "MARGIN_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build Margin.app
+        run: ./build.sh release
+
+      - name: Notarize
+        if: env.MACOS_CERTIFICATE != '' && env.APPLE_ID != ''
+        run: |
+          xcrun notarytool submit "$ZIP" --wait \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          xcrun stapler staple build/Margin.app
+          rm "$ZIP"
+          ditto -c -k --keepParent build/Margin.app "$ZIP"
+
+      - name: Verify the signature
+        run: codesign --verify --deep --strict --verbose=2 build/Margin.app
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="docs/releases/$TAG.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          elif [[ -f "$NOTES" ]]; then
+            gh release create "$TAG" "$ZIP" --title "Margin ${TAG#v}" --notes-file "$NOTES" --verify-tag $PRERELEASE
+          else
+            gh release create "$TAG" "$ZIP" --title "Margin ${TAG#v}" --generate-notes --verify-tag $PRERELEASE
+          fi
