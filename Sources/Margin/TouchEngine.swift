@@ -206,8 +206,8 @@ final class TouchEngine {
             slide = Self.runnable(c.layout.edge(edge).slide)
         }
         // A corner bound to nothing lets its taps fall through to the edge under it.
-        let tapZone = hit.tapZone { Self.runnable(Self.tapCommand(c.layout, $0)) != .none }
-        let tap = tapZone.map { Self.tapCommand(c.layout, $0) } ?? .none
+        let tapZone = hit.tapZone { Self.runnable(c.layout.tap($0)) != .none }
+        let tap = tapZone.map { c.layout.tap($0) } ?? .none
         guard slide != .none || tap != .none else { return nil }
 
         InputGate.shared.setTapCandidate(tap != .none)
@@ -227,25 +227,14 @@ final class TouchEngine {
         )
     }
 
-    /// Anything in the layout this build can't run yet (the timer, the spaces and arrow-key
-    /// steppers, window and timer commands, launching apps) is treated as unbound, so it never
-    /// claims a touch or swallows a click.
+    /// Anything in the layout this build can't run yet (the timer, window and timer commands) is
+    /// treated as unbound, so it never claims a touch or swallows a click.
     private static func runnable(_ slide: SlideAction) -> SlideAction {
-        switch slide {
-        case .level: slide
-        case .stepper(let stepper): stepper.shortcuts == nil ? .none : slide
-        case .flick(let forward, let back):
-            runnable(forward) != .none || runnable(back) != .none ? slide : .none
-        case .none, .timer: .none
-        }
+        Actions.canRun(slide) ? slide : .none
     }
 
     private static func runnable(_ command: Command) -> Command {
         Actions.canRun(command) ? command : .none
-    }
-
-    private static func tapCommand(_ layout: MarginCore.Layout, _ zone: Zone) -> Command {
-        zone.isCorner ? layout.corner(zone) : layout.edge(zone).tap
     }
 
     private static func levelKind(_ slide: SlideAction) -> LevelKind? {
@@ -414,7 +403,9 @@ final class TouchEngine {
     /// A stepper: one command per notch crossed, each with a tick, and a running count in the
     /// overlay. The count lives in the gesture, so it starts again from zero on the next touch.
     private func stepNotches(_ g: inout Gesture, _ stepper: Stepper, to p: CGPoint) {
-        guard var counter = g.stepper, let shortcuts = stepper.shortcuts else { return }
+        guard var counter = g.stepper else { return }
+        let vertical = g.edge?.slidesVertically ?? true
+        let shortcuts = stepper.shortcuts(slidingVertically: vertical)
         let crossed = counter.move(to: g.along(p))
         g.stepper = counter
         guard crossed != 0 else { return }
@@ -422,17 +413,9 @@ final class TouchEngine {
             Actions.fire(.keystroke(crossed > 0 ? shortcuts.forward : shortcuts.back))
         }
         haptic(g.device)
-        let label = stepper.label(count: counter.notch)
-        let symbol = Self.symbol(for: stepper, count: counter.notch)
+        let label = stepper.label(count: counter.notch, slidingVertically: vertical)
+        let symbol = stepper.symbol(count: counter.notch, slidingVertically: vertical)
         DispatchQueue.main.async { LevelOverlay.shared.showCounter(symbol: symbol, label: label) }
-    }
-
-    private static func symbol(for stepper: Stepper, count: Int) -> String {
-        switch stepper {
-        case .undoRedo: count > 0 ? "arrow.uturn.forward" : "arrow.uturn.backward"
-        case .tabs: count < 0 ? "arrow.left.square" : "arrow.right.square"
-        case .spaces, .arrowKeys: "arrow.left.and.right"
-        }
     }
 
     private func engage(_ g: Gesture) {

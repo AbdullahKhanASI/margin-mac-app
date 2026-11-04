@@ -10,16 +10,28 @@ enum Actions {
     }
 
     /// Whether this build can carry out `command`. The engine treats the rest as unbound, so
-    /// they never claim a touch or swallow a click.
+    /// they never claim a touch or swallow a click, and the zone editor doesn't offer them.
     static func canRun(_ command: Command) -> Bool {
         switch command {
         case .media, .toggleOutputMute, .toggleInputMute,
              .lockScreen, .screenshotRegion, .missionControl, .appWindows, .showDesktop,
              .startScreenSaver, .sleepDisplay, .keystroke:
             true
-        // Window commands arrive in phase 6, the timer in phase 5; launchApp isn't scheduled yet.
-        case .none, .window, .timerStart, .timerPauseResume, .timerCancel, .launchApp:
+        case .launchApp(let bundleID):
+            !bundleID.isEmpty
+        // Window commands arrive in phase 6, the timer in phase 5.
+        case .none, .window, .timerStart, .timerPauseResume, .timerCancel:
             false
+        }
+    }
+
+    /// The same for a slide. A flick counts if either of its commands can run.
+    static func canRun(_ slide: SlideAction) -> Bool {
+        switch slide {
+        case .level, .stepper: true
+        case .flick(let forward, let back): canRun(forward) || canRun(back)
+        // The timer dial arrives in phase 5.
+        case .none, .timer: false
         }
     }
 
@@ -50,6 +62,8 @@ enum Actions {
             pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
             pmset.arguments = ["displaysleepnow"]
             try? pmset.run()
+        case .launchApp(let bundleID):
+            launch(bundleID)
         case .showDesktop:
             // Unverified on macOS 14–16; see `ShowDesktopShortcut`.
             post(ShowDesktopShortcut.resolve(symbolicHotKeys: symbolicHotKeys()))
@@ -68,6 +82,13 @@ enum Actions {
             event.flags = CGEventFlags(rawValue: combo.postedFlags)
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    /// Opens the app, or brings it forward if it's running. An app that's since been deleted
+    /// does nothing; the tap's haptic has already said the tap was seen.
+    private static func launch(_ bundleID: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     private static func open(_ path: String) {
