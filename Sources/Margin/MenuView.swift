@@ -1,4 +1,5 @@
 import Combine
+import MarginCore
 import SwiftUI
 
 extension Notification.Name {
@@ -105,11 +106,11 @@ struct MenuView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            SwitchRow("Quick Mute", detail: "Double-tap the top-right corner", isOn: $prefs.config.quickMute)
-            SwitchRow("Media Strip", detail: "Swipe the bottom edge to skip", isOn: $prefs.config.mediaStrip)
-            if prefs.config.mediaStrip {
+            SwitchRow("Quick Mute", detail: "Double-tap the top-right corner", isOn: prefs.layoutToggle(\.quickMute))
+            SwitchRow("Media Strip", detail: "Swipe the bottom edge to skip", isOn: prefs.layoutToggle(\.mediaStrip))
+            if prefs.config.layout.mediaStrip {
                 SwitchRow("Tap to Play or Pause", detail: "Double-tap the bottom edge",
-                          isOn: $prefs.config.mediaPlayPause)
+                          isOn: prefs.layoutToggle(\.mediaPlayPause))
                     .padding(.leading, 14)
             }
         }
@@ -158,7 +159,7 @@ private struct SettingsPage: View {
         }
 
         Section("Edges") {
-            SwitchRow("Swap Sides", detail: "Volume on the left, brightness on the right", isOn: $prefs.config.swapSides)
+            SwitchRow("Swap Sides", detail: "Volume on the left, brightness on the right", isOn: prefs.layoutToggle(\.sidesSwapped))
             SwitchRow("Bottom Quarter Only", detail: "Ignore touches above the lower 25%",
                       isOn: $prefs.config.bottomQuarterOnly)
             SwitchRow("Require fn or ⌥", detail: "Only slide while holding a modifier",
@@ -173,7 +174,9 @@ private struct SettingsPage: View {
         }
 
         Section("Media Strip") {
-            SwitchRow("Reverse Swipe", detail: "Swipe left to skip ahead", isOn: $prefs.config.reverseMediaSwipe)
+            SwitchRow("Reverse Swipe", detail: "Swipe left to skip ahead", isOn: prefs.layoutToggle(\.reverseMediaSwipe))
+                // With the strip off there's no flick to reverse, so the switch would do nothing.
+                .disabled(!prefs.config.layout.mediaStrip)
         }
 
         Section("Devices") {
@@ -206,6 +209,15 @@ private struct SettingsPage: View {
     }
 }
 
+extension Preferences {
+    /// A menu switch that edits the layout. These stand in for the zone editor until phase 3
+    /// replaces them; the rules for each live with the layout in MarginCore.
+    func layoutToggle(_ keyPath: WritableKeyPath<MarginCore.Layout, Bool>) -> Binding<Bool> {
+        Binding(get: { self.config.layout[keyPath: keyPath] },
+                set: { self.config.layout[keyPath: keyPath] = $0 })
+    }
+}
+
 // MARK: - Trackpad diagram
 
 private struct TrackpadDiagram: View {
@@ -230,13 +242,13 @@ private struct TrackpadDiagram: View {
                 .strokeBorder(.separator)
 
             HStack {
-                if config.swapSides { volumeMeter } else { brightnessMeter }
+                if config.layout.sidesSwapped { volumeMeter } else { brightnessMeter }
                 Spacer()
-                if config.swapSides { brightnessMeter } else { volumeMeter }
+                if config.layout.sidesSwapped { brightnessMeter } else { volumeMeter }
             }
             .padding(10)
 
-            if config.mediaStrip {
+            if config.layout.mediaStrip {
                 VStack {
                     Spacer()
                     HStack(spacing: 18) {
@@ -253,7 +265,7 @@ private struct TrackpadDiagram: View {
                 }
             }
 
-            if config.quickMute {
+            if config.layout.quickMute {
                 VStack {
                     HStack {
                         Spacer()

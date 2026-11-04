@@ -2,18 +2,7 @@ import AppKit
 import AudioToolbox
 import CMultitouch
 import CoreAudio
-
-/// Hardware key codes from IOKit's ev_keymap.h (NX_KEYTYPE_*).
-enum MediaKey: Int {
-    case soundUp = 0
-    case soundDown = 1
-    case brightnessUp = 2
-    case brightnessDown = 3
-    case mute = 7
-    case play = 16
-    case next = 17
-    case previous = 18
-}
+import MarginCore
 
 enum SystemControls {
     /// Posts the same system-defined event the keyboard's media keys send, so macOS applies the

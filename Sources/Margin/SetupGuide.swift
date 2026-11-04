@@ -1,4 +1,5 @@
 import AppKit
+import MarginCore
 import SwiftUI
 
 /// The first-run window: grant access, then try each gesture once. Steps tick themselves off
@@ -37,15 +38,11 @@ private struct SetupGuideView: View {
 
     private let prefs = Preferences.shared
     private let state = AppState.shared
-    @State private var completed = Set<String>()
+    @State private var completed = Set<GestureStep.ID>()
 
-    private var volumeSide: String { prefs.config.swapSides ? "left" : "right" }
-    private var brightnessSide: String { prefs.config.swapSides ? "right" : "left" }
-
-    /// Steps 1–3 are always shown; mute and the media strip are optional.
-    private var loginStepNumber: Int {
-        4 + (prefs.config.quickMute ? 1 : 0) + (prefs.config.mediaStrip ? 1 : 0)
-    }
+    private var gestureSteps: [GestureStep] { GestureStep.steps(for: prefs.config.layout) }
+    /// Accessibility is step 1, then the gestures, then login.
+    private var loginStepNumber: Int { gestureSteps.count + 2 }
 
     private var accessibilityDetail: String {
         if state.accessibilityLikelyStale && !state.accessibilityTrusted {
@@ -78,17 +75,9 @@ private struct SetupGuideView: View {
                         }
                     }
                 }
-                Step(number: 2, title: "Slide along the \(volumeSide) edge",
-                     detail: "Up for louder, down for quieter.", done: completed.contains("volume")) {}
-                Step(number: 3, title: "Slide along the \(brightnessSide) edge",
-                     detail: "Up for brighter, down for dimmer.", done: completed.contains("brightness")) {}
-                if prefs.config.quickMute {
-                    Step(number: 4, title: "Double-tap the top-right corner",
-                         detail: "Mutes and unmutes. You'll feel a stronger buzz.", done: completed.contains("mute")) {}
-                }
-                if prefs.config.mediaStrip {
-                    Step(number: loginStepNumber - 1, title: "Swipe along the bottom edge",
-                         detail: "Right to skip ahead, left to go back.", done: completed.contains("skip")) {}
+                ForEach(Array(gestureSteps.enumerated()), id: \.element.id) { index, step in
+                    Step(number: index + 2, title: step.title, detail: step.detail,
+                         done: completed.contains(step.id)) {}
                 }
                 Step(number: loginStepNumber, title: "Open Margin at login",
                      detail: "So your edges keep working after a restart.", done: state.launchAtLogin) {
@@ -112,17 +101,66 @@ private struct SetupGuideView: View {
         .frame(width: 440)
         .preferredColorScheme(prefs.appearance.colorScheme)
         .onReceive(NotificationCenter.default.publisher(for: .marginGestureCompleted)) { note in
-            guard let gesture = note.object as? CompletedGesture else { return }
-            let key: String? = switch gesture {
-            case .volume: "volume"
-            case .brightness: "brightness"
-            case .mute: "mute"
-            case .skip: "skip"
-            case .playPause: nil
+            guard let (zone, kind) = note.object as? (Zone, GestureKind) else { return }
+            let id = GestureStep.ID(zone: zone, kind: kind)
+            guard gestureSteps.contains(where: { $0.id == id }) else { return }
+            withAnimation(.spring(duration: 0.3)) { _ = completed.insert(id) }
+        }
+    }
+}
+
+/// One "try this gesture" step, derived from a binding in the global layout.
+private struct GestureStep: Identifiable {
+    struct ID: Hashable {
+        let zone: Zone
+        let kind: GestureKind
+    }
+
+    let id: ID
+    let title: String
+    let detail: String
+
+    /// In v1.2's order: level slides (volume, then brightness), corner taps, then flicks. Edge
+    /// double-taps get no step, as play/pause had none in v1.2; the zone editor (phase 3) is the
+    /// place to describe the rest. Phase 1 only describes what the engine can run.
+    static func steps(for layout: MarginCore.Layout) -> [GestureStep] {
+        var steps: [GestureStep] = []
+        let edgeOrder: [Zone] = [.rightEdge, .leftEdge, .topEdge, .bottomEdge]
+
+        for (source, detail) in [(LevelSource.outputVolume, "Up for louder, down for quieter."),
+                                 (.brightness, "Up for brighter, down for dimmer.")] {
+            for zone in edgeOrder where layout.edge(zone).slide == .level(source) {
+                steps.append(GestureStep(id: ID(zone: zone, kind: .slide),
+                                         title: "Slide along the \(zone.name)", detail: detail))
             }
-            if let key {
-                withAnimation(.spring(duration: 0.3)) { _ = completed.insert(key) }
-            }
+        }
+        for zone in Zone.corners where layout.corner(zone) == .toggleOutputMute {
+            steps.append(GestureStep(id: ID(zone: zone, kind: .doubleTap), title: "Double-tap the \(zone.name)",
+                                     detail: "Mutes and unmutes. You'll feel a stronger buzz."))
+        }
+        for zone in edgeOrder {
+            guard case .flick(let forward, let back) = layout.edge(zone).slide,
+                  [forward, back] == [.media(.next), .media(.previous)]
+                    || [forward, back] == [.media(.previous), .media(.next)] else { continue }
+            // Worded as in v1.2, which didn't mention Reverse Swipe either.
+            steps.append(GestureStep(id: ID(zone: zone, kind: .slide), title: "Swipe along the \(zone.name)",
+                                     detail: "Right to skip ahead, left to go back."))
+        }
+        return Array(steps.prefix(6))
+    }
+}
+
+private extension Zone {
+    var name: String {
+        switch self {
+        case .leftEdge: "left edge"
+        case .rightEdge: "right edge"
+        case .topEdge: "top edge"
+        case .bottomEdge: "bottom edge"
+        case .topLeft: "top-left corner"
+        case .topRight: "top-right corner"
+        case .bottomLeft: "bottom-left corner"
+        case .bottomRight: "bottom-right corner"
         }
     }
 }
