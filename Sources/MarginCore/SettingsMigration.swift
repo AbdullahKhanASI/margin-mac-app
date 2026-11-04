@@ -12,7 +12,10 @@ public enum SettingsMigration {
 
     public static func decodeLayout(from decoder: Decoder) throws -> Layout {
         let c = try decoder.container(keyedBy: Keys.self)
-        if let layout = try c.decodeIfPresent(Layout.self, forKey: .layout) { return layout }
+        // A layout this build can't read, such as one saved by a newer build with a command this
+        // one doesn't know, falls back like a missing one instead of failing the whole config,
+        // which would reset every other setting too.
+        if let layout = try? c.decodeIfPresent(Layout.self, forKey: .layout) { return layout }
         // Missing keys take v1.2's defaults, which together give `Layout.default`.
         return Layout.migrated(
             swapSides: try c.decodeIfPresent(Bool.self, forKey: .swapSides) ?? false,
