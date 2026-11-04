@@ -17,7 +17,7 @@ extension KeyCombo {
         public static let q: UInt16 = 12
         public static let four: UInt16 = 21
         public static let tab: UInt16 = 48
-        public static let f3: UInt16 = 99
+        public static let f11: UInt16 = 103
         public static let leftArrow: UInt16 = 123
         public static let rightArrow: UInt16 = 124
         public static let downArrow: UInt16 = 125
@@ -49,16 +49,18 @@ extension Command {
 }
 
 /// Show Desktop has no fixed shortcut: it's F11 by default and can be changed in Keyboard
-/// Shortcuts, which store it as symbolic hot key 36.
+/// Shortcuts, which store it as symbolic hot key 36. Until it's changed there's no entry at all,
+/// and the default applies.
 ///
-/// Unverified: the spec only ships Show Desktop if this works on macOS 14–16 with no setup, and
-/// that hasn't been checked on each version yet.
+/// ⌘F3 (the spec's fallback) does nothing when posted: the Mission Control key on Apple keyboards
+/// isn't the F3 key code. F11 with the fn bit, as macOS records it, works.
+/// Verified on macOS 27 only; the spec asks for 14–16 too.
 public enum ShowDesktopShortcut {
     public static let hotKeyID = "36"
-    public static let fallback = KeyCombo(keyCode: KeyCombo.Key.f3, modifiers: KeyCombo.Modifier.command)
+    public static let fallback = KeyCombo(keyCode: KeyCombo.Key.f11, modifiers: KeyCombo.Modifier.function)
 
-    /// The shortcut from `AppleSymbolicHotKeys` in `com.apple.symbolichotkeys`, or the ⌘F3
-    /// fallback when it's missing, switched off or unreadable. Entries look like
+    /// The shortcut from `AppleSymbolicHotKeys` in `com.apple.symbolichotkeys`, or the F11
+    /// default when it's missing, switched off or unreadable. Entries look like
     /// `{enabled = 1; value = {parameters = (65535, 103, 8388608); type = standard;};}`, where
     /// the parameters are the character, the key code and the modifier flags.
     public static func resolve(symbolicHotKeys: Any?) -> KeyCombo {

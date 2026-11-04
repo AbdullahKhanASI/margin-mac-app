@@ -105,14 +105,16 @@ final class SystemShortcutTests: XCTestCase {
 
     func testShowDesktopUsesTheUsersShortcut() {
         let hotKeys: [String: Any] = [
-            "36": ["enabled": true, "value": ["parameters": [65535, 103, 8388608], "type": "standard"]],
+            // Changed to ⌃⌥D.
+            "36": ["enabled": true, "value": ["parameters": [100, 2, 786432], "type": "standard"]],
         ]
         XCTAssertEqual(ShowDesktopShortcut.resolve(symbolicHotKeys: hotKeys),
-                       KeyCombo(keyCode: 103, modifiers: M.function))
+                       KeyCombo(keyCode: 2, modifiers: M.control | M.option))
     }
 
-    func testShowDesktopFallsBackToCommandF3() {
-        let fallback = KeyCombo(keyCode: 99, modifiers: M.command)
+    func testShowDesktopFallsBackToTheF11Default() {
+        // macOS's own default, recorded as F11 with the fn bit.
+        let fallback = KeyCombo(keyCode: 103, modifiers: M.function)
         XCTAssertEqual(ShowDesktopShortcut.resolve(symbolicHotKeys: nil), fallback)
         XCTAssertEqual(ShowDesktopShortcut.resolve(symbolicHotKeys: [String: Any]()), fallback)
         // Switched off in Keyboard Shortcuts.

@@ -261,7 +261,7 @@ tested with recorded touch paths.
 | `screenshotRegion` | the ⇧⌘4 keystroke |
 | `missionControl` | `NSWorkspace.open` on `/System/Applications/Mission Control.app` |
 | `appWindows` | the ⌃↓ keystroke |
-| `showDesktop` | the Show Desktop keystroke if one is set in Keyboard Shortcuts, otherwise ⌘F3. It ships only if this works on macOS 14–16 without the user setting anything up; otherwise it is dropped from v1, and users can bind a keystroke themselves. |
+| `showDesktop` | the Show Desktop keystroke if one is set in Keyboard Shortcuts, otherwise the macOS default, F11 (⌘F3 does nothing when posted). It ships only if this works on macOS 14–16 without the user setting anything up; otherwise it is dropped from v1, and users can bind a keystroke themselves. |
 | `startScreenSaver` | `NSWorkspace.open` on `ScreenSaverEngine.app` |
 | `sleepDisplay` | `/usr/bin/pmset displaysleepnow` |
 | `timer*` | `TimerService` (see [Timer dial](#timer-dial)) |
